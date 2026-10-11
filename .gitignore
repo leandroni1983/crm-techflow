@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
+.env
+.env.example
+.env.production
+
+# Data files
+crm.db
+*.db
+*.sqlite3
+
+# Docker
+.dockerignore
+
+# Media and Comprobantes (generated files)
+media/
+comprobantes/
+
+# Docker images
+*.tar
+*.tgz
+
+# IDEs
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+.LockFile
+
+# Backup
+*.bak
+*.backup

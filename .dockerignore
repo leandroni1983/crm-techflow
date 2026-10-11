@@ -1,0 +1,10 @@
+data/
+media/
+comprobantes/
+crm.db
+outbox.db
+reserva.json
+__pycache__/
+.env
+.git
+*.md
