@@ -29,18 +29,25 @@ Copiá también tus carpetas `media/` y `comprobantes/` a `DATA_PATH`.
 
 ## 4. Imagen en Docker Hub
 
-En la PC con el código: `make push` (arma `leandrocode/crmtech:<versión>` y la sube). Si tu PC es ARM y el server x86:
-`docker buildx build --platform linux/amd64 -t leandrocode/crmtech:1.2.0 --push .`
+En la PC con el código: `make push` (arma `leandrocode/crmtech:<versión>` con la versión del paquete y la sube). Si tu PC es ARM y el server x86:
+`docker buildx build --platform linux/amd64 -t leandrocode/crmtech:1.4.0 --push .`
 En el server solo hacen falta `docker-compose.yml` y `.env`: `docker compose pull && docker compose up -d`.
 Cada cambio de código lleva una versión nueva (`CRM_VERSION` en `.env`); nunca reutilices una ya publicada ni uses `latest`.
 
 ## 5. Actualizar
 
 ```bash
-# .env: CRM_VERSION=1.2.1
-docker compose pull && docker compose up -d
+# 1) En el server, editá .env y poné la versión nueva:  CRM_VERSION=1.4.0
+# 2) Respaldá antes de actualizar (recomendado):
+docker compose exec crm python -m crm backup
+# 3) Bajá la imagen nueva y recreá el contenedor:
+docker compose pull
+docker compose up -d
+# 4) Verificá que quedó la versión nueva:
+docker compose exec crm python -m crm version
 ```
-Las migraciones se aplican solas. Si la base fuera más nueva que el programa, el CRM se niega a arrancar para no dañarla.
+Las migraciones se aplican solas al iniciar. Si la base fuera más nueva que el programa, el CRM se niega a arrancar para no dañarla.
+Si `up -d` no recrea el contenedor (dice que ya está actualizado), forzá: `docker compose up -d --force-recreate`.
 
 ## 6. Qué respaldar
 

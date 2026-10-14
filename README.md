@@ -1,11 +1,13 @@
 # CRM Técnico
 
 Órdenes de servicio para un taller de reparaciones: ingreso con checklist, fotos y firma; presupuestos y avisos por
-WhatsApp; comprobantes de ingreso y de entrega en PDF con QR; garantía; panel de estadísticas (dashboard) con
-gráficos y exportación a Excel; lista de órdenes compacta (una línea por orden que se despliega al tocarla);
-tipo de falla y tipo de equipo con listas que el administrador edita desde Configuración; **portal de seguimiento
-para el cliente** por link privado; **inventario de repuestos** con alerta de reposición; **papelera recuperable** y
-respaldo descargable; usuarios con roles; app instalable (PWA) y funcionamiento sin conexión con la base.
+WhatsApp; comprobantes de ingreso y de entrega en PDF con QR; garantía; **pagos parciales y caja** con arqueo del día;
+**ficha del cliente** con historial y deuda; panel de estadísticas (dashboard) con gráficos y exportación a Excel;
+lista de órdenes compacta (una línea por orden que se despliega al tocarla) con **prioridad**, **tareas/recordatorios**
+y **adjuntos**; tipo de falla y tipo de equipo con listas que el administrador edita desde Configuración; **portal de
+seguimiento para el cliente** por link privado, donde puede **aprobar el presupuesto**; **inventario de repuestos** con
+movimientos y alerta de reposición; **papelera recuperable** y respaldo descargable; **auditoría** de quién hizo qué y
+actualización en **tiempo real**; usuarios con roles; app instalable (PWA) y funcionamiento sin conexión con la base.
 
 ## Inicio rápido (Docker)
 
@@ -22,13 +24,13 @@ Abrí `http://IP-DEL-SERVER:8000`. Más detalle (base en la nube, migrar tu `crm
 
 ```bash
 make run        # servidor local con SQLite en ./data (http://localhost:8000)
-make test       # 49 pruebas unitarias y de API (solo necesita Python)
+make test       # 54 pruebas unitarias y de API (solo necesita Python)
 make lint       # revisa errores reales del código (ruff)
 make e2e        # prueba de navegador con Playwright (funciona en Windows, Linux y macOS)
 make help       # todos los comandos
 ```
 Sin Docker ni PostgreSQL alcanza con Python 3.10+. Para usar PostgreSQL: `pip install -r requirements.txt` y `DATABASE_URL=postgresql://...`.
-El proyecto usa [GitHub Actions](.github/workflows/ci.yml): en cada push corre el lint, las 49 pruebas y la prueba de navegador.
+El proyecto usa [GitHub Actions](.github/workflows/ci.yml): en cada push corre el lint, las 54 pruebas y las 122 comprobaciones de navegador.
 
 ## Estructura
 

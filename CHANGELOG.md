@@ -10,7 +10,19 @@
 - **Seguridad**: cabeceras `Content-Security-Policy` estricta y `Permissions-Policy`; validación de **Origin** (contra CSRF); **límite de tasa** por IP en las rutas sensibles; cookie **`__Host-crm_sid`** bajo HTTPS; aviso cuando la contraseña del administrador es débil.
 - **Rendimiento y arquitectura**: el panel pide los **agregados ya calculados** al servidor (`/api/resumen`) y, sin conexión, los calcula local con las mismas reglas; `/api/data` y `/api/resumen` usan **ETag** (304 sin cuerpo); la lista se dibuja **de a 50** con botón "ver más"; `app.js` se dividió en **módulos ES** (`util`, `db`, `comun`, `cat`, `orden`, `lista`, `config`, `panel`, `modo`, `app`) sin empaquetador ni CDN.
 - **Automatización**: **GitHub Actions** (lint `ruff` + pruebas en 3.10/3.12 + e2e con Playwright), comandos `make lint/test/e2e`, y **healthcheck** del contenedor Docker.
-- Pruebas: **49** unitarias/API y **85** comprobaciones de navegador.
+- **Pagos y caja**: la orden guarda **pagos parciales** (fecha, monto, medio y nota) además de la seña, y el saldo se calcula solo. Botón **💰 Caja** con el **arqueo del día** (cobros y totales por medio).
+- **Ficha del cliente**: desde la orden, el botón **👤 Cliente** muestra el historial, la **deuda pendiente** y los equipos de ese cliente.
+- **Inventario con movimientos (kardex)**: cada repuesto lleva su **historial de entradas y salidas**; una entrada suma stock, una salida lo descuenta, con nota y fecha.
+- **Aprobación del presupuesto por el cliente**: desde su **link de seguimiento**, el cliente puede **aprobar o rechazar** el presupuesto; cambia el estado de la orden y queda registrado quién y cuándo (no pisa una decisión previa).
+- **Prioridad y vencimientos**: la orden se puede marcar con **prioridad**; la lista se ordena por prioridad o por deuda y avisa de los equipos **sin retirar** por más días.
+- **Permisos finos**: opción para **ocultar los importes** a los técnicos y permiso (solo administrador por defecto) para el **borrado definitivo**.
+- **Tareas y recordatorios**: cada orden admite **tareas** con fecha límite opcional, que se marcan como hechas; accesos rápidos **Con tareas** y **Tareas vencidas** en la lista, y quedan anotadas en el historial.
+- **Adjuntos**: se pueden adjuntar a la orden **documentos** (PDF, Word/Excel, ZIP, imágenes y texto, hasta 15 MB); se sirven con su tipo real, los que no son imagen se descargan y nunca se ejecutan desde el navegador.
+- **Equipos por cliente**: en la ficha del cliente los equipos se agrupan y hay un botón para **repetir la orden con el mismo equipo**.
+- **Auditoría global**: bitácora de **quién hizo qué y cuándo** (ingresos, órdenes, configuración, usuarios, respaldo, bajas definitivas y la decisión del cliente en el portal); la ve solo el administrador y guarda los últimos 2000 movimientos.
+- **Tiempo real**: si otro usuario cambia algo, la lista del resto **se actualiza sola** (sondeo liviano de un "sello" del servidor cada 5 s), sin pisar lo que estás editando.
+- Migraciones de esquema **v6** (pagos y aprobación), **v7** (tareas y adjuntos) y **v8** (auditoría): se aplican solas al iniciar, sin perder datos.
+- Pruebas: **54** unitarias/API y **122** comprobaciones de navegador.
 
 ## 1.3.0
 - El **panel de estadísticas (dashboard)** pasa a ser la pantalla principal al iniciar sesión: indicadores del período (ingresadas, entregadas, facturado, costo de repuestos, ganancia, ticket promedio, sin retirar) y gráficos sin librerías externas (evolución mensual, facturado vs. ganancia, distribución por estado, por técnico, equipos y fallas más comunes).
