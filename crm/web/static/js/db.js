@@ -1,7 +1,7 @@
 /* ============ CAPA DE DATOS ============
    Todo el acceso a datos pasa por el objeto DB. Con server.py guarda en crm.db (SQLite);
    sin servidor usa el navegador (localStorage). Para otra base de datos, reemplazá estos métodos. */
-const DEFAULTS = {
+export const DEFAULTS = {
   taller: 'Mi Taller', taller_datos: '', logo: '', logo_solo: '0', prefijo: '', pais: '549', url_publica: '',
   pdfAncho: '210', pdfAlto: '148', et_ancho: '70', et_alto: '40', garantia_dias: '90', dias_alerta: '7',
   checklist_items: 'Enciende, Con batería, Con cargador, Pantalla rota, Golpes visibles, Con disco / memoria',
@@ -19,30 +19,44 @@ const DEFAULTS = {
   condiciones: 'Condiciones: el presupuesto puede variar si aparecen fallas adicionales. Pasados 90 días del aviso de reparación sin retirar el equipo, el taller no se responsabiliza por el mismo.'
 };
 
-const ordenVacia = () => ({
+export const ordenVacia = () => ({
   cliente: '', tel: '', direccion: '', equipo: '', equipo_tipo: '', marca: '', color: '', serie: '', accesorios: '', fisico: '', deteriorado: '',
   clave: '', falla_tipo: '', problema: '', diagnostico: '', monto: '', autoriza: '', sena: '', pagado: '', estado: 'Recibido', estado_fecha: '',
   hora: '', entrega_est: '', entrega_fecha: '', garantia_fab: '', observ: '', firma: '', firma_entrega: '', tecnico: '', borrada: '',
   checklist: [], repuestos: [], historial: [], imagenes: []
 });
-const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['checklist', 'repuestos', 'historial', 'imagenes']) if (!Array.isArray(b[k])) b[k] = []; return b; };
+export const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['checklist', 'repuestos', 'historial', 'imagenes']) if (!Array.isArray(b[k])) b[k] = []; return b; };
 
-const DB = {
+export const DB = {
   K: 'crm-tecnico-v1', api: false, usuario: null, tecnicos: [], sync: null,
   data: { ordenes: [], config: { ...DEFAULTS }, seq: 0 },
+  etags: {},     // última ETag vista por dirección: sirve para preguntar "¿cambió algo?" y no bajar todo de nuevo
+  cache: {},     // último JSON recibido por dirección (se reutiliza cuando el servidor responde 304)
   /* Órdenes activas: las de la papelera (borrada con fecha) no se muestran ni se cuentan en ningún lado. */
   get ordenes() { return this.data.ordenes.filter(o => !o.borrada); },
   /* La sesión viaja en una cookie HttpOnly; si el servidor responde 401 volvemos al login. */
   async req(path, opt = {}) {
-    const r = await fetch(path, { ...opt, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' });
+    const r = await fetch(path, {
+      ...opt,
+      headers: { 'Content-Type': 'application/json', ...(opt.headers || {}) },
+      credentials: 'same-origin'
+    });
     if (r.status === 401) { location.href = '/login'; throw new Error('sesión vencida'); }
     return r;
   },
+  /* Pide un JSON y recuerda su ETag: si el servidor contesta 304 (nada cambió) devuelve el último recibido. */
+  async reqJSON(path) {
+    const r = await this.req(path, { headers: this.etags[path] ? { 'If-None-Match': this.etags[path] } : {} });
+    if (r.status === 304) return this.cache[path];
+    if (!r.ok) throw new Error('http ' + r.status);
+    const et = r.headers.get('ETag'); if (et) this.etags[path] = et;
+    return (this.cache[path] = await r.json());
+  },
   async load() {
     try {
-      const r = await this.req('/api/data');
-      if (r.ok) {
-        const d = await r.json(); this.api = true; this.usuario = d.usuario || null; this.tecnicos = d.tecnicos || []; this.sync = d.sync || null;
+      const d = await this.reqJSON('/api/data');   // con ETag: si nada cambió, el servidor contesta 304 y no se baja el listado
+      if (d) {
+        this.api = true; this.usuario = d.usuario || null; this.tecnicos = d.tecnicos || []; this.sync = d.sync || null;
         this.data.ordenes = d.ordenes.map(norm);
         this.data.config = { ...DEFAULTS, ...(d.config || {}) };
         return this.data;
@@ -72,6 +86,7 @@ const DB = {
         if (d.historial) o.historial = d.historial;
       } catch (e) { alert('No se pudo guardar: no hay conexión con el servidor del CRM.'); return false; }
       if (i >= 0) L[i] = o; else L.unshift(o);
+      delete this.etags['/api/data'];   // la copia local cambió: hay que volver a bajar el listado en la próxima
       return true;
     }
     if (i >= 0) L[i] = o; else { this.data.seq++; o.seq = this.data.seq; L.unshift(o); }

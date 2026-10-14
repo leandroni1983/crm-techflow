@@ -17,8 +17,8 @@ class ApiTest(unittest.TestCase):
     def test_sin_sesion_todo_esta_protegido(self):
         c = self.c
         self.assertEqual(c.get("/api/data")[0], 401)
-        self.assertEqual(c.get("/static/js/app.js")[0], 401)          # la lógica solo se entrega con sesión
-        self.assertEqual(c.get("/static/js/db.js")[0], 401)
+        for js in ("app", "db", "util", "comun", "cat", "orden", "lista", "config", "panel", "modo"):
+            self.assertEqual(c.get("/static/js/%s.js" % js)[0], 401, js)   # la lógica solo se entrega con sesión
         code, _, h = c.get("/"); self.assertEqual((code, h["Location"]), (302, "/login"))
         self.assertEqual(c.get("/media/o1/aaaaaaaaaaaaaaaaaaaa.jpg")[0], 401)
         for public in ("/login", "/health", "/sw.js", "/manifest.webmanifest", "/static/css/styles.css", "/static/js/login.js", "/static/img/icon-192.png"):
@@ -31,7 +31,8 @@ class ApiTest(unittest.TestCase):
         self.assertIn("crm_sid=", h["Set-Cookie"])                                              # por http, sin prefijo
         self.assertIn("HttpOnly", h["Set-Cookie"]); self.assertIn("SameSite=Lax", h["Set-Cookie"]); self.assertNotIn("Secure", h["Set-Cookie"])
         self.assertEqual(c.get("/api/data")[0], 200)
-        self.assertEqual(c.get("/static/js/app.js")[0], 200)
+        for js in ("app", "db", "util", "comun", "cat", "orden", "lista", "config", "panel", "modo"):
+            self.assertEqual(c.get("/static/js/%s.js" % js)[0], 200, js)
         c.post("/api/logout"); self.assertEqual(c.get("/api/data")[0], 401)
         self.assertEqual(c.get("/static/js/app.js")[0], 401)
 
@@ -172,6 +173,40 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(sin_sesion.get("/seguimiento/999/000000000000")[0], 404)           # orden que no existe
         self.assertEqual(sin_sesion.get(f"/seguimiento/{o['seq']}/{o['seg']}/x")[0], 404)
         a.delete("/api/orden/seg1")
+
+    # ---- panel de estadísticas: agregación en el servidor y ETag
+    def test_resumen_y_etag_del_servidor(self):
+        """El panel puede pedir los números ya calculados y no bajar de nuevo lo que no cambió."""
+        a = self.env.client(); a.login()
+        for i, (est, fecha) in enumerate([("Entregado", ""), ("Listo para retirar", "2020-01-01T00:00:00Z")]):
+            self.assertEqual(a.post("/api/orden", {
+                "id": "res%d" % i, "creada": "2024-04-0%dT10:00:00Z" % (i + 1), "cliente": "R%d" % i, "tel": "11",
+                "equipo_tipo": "Notebook", "falla_tipo": "No enciende", "estado": est, "estado_fecha": fecha,
+                "monto": "10000", "entrega_fecha": "2024-04-20" if est == "Entregado" else "",
+                "repuestos": [{"desc": "Batería", "cant": "2", "costo": "1000"}]})[0], 200)
+        url = "/api/resumen?desde=2024-04-01&hasta=2024-04-30"
+        code, d, h = a.get(url)
+        self.assertEqual(code, 200)
+        self.assertEqual((d["ingresadas"], d["pendientes"], d["entregadas"]), (2, 1, 1))
+        self.assertEqual((d["facturado"], d["repuestos"], d["ganancia"]), (10000, 2000, 8000))
+        self.assertEqual(d["ticket"], 10000)
+        self.assertEqual(d["fallas"], [{"label": "No enciende", "value": 2}])
+        self.assertEqual(d["equipos"], [{"label": "Notebook", "value": 2}])
+        self.assertEqual(d["sinretirar"], 1)                                        # el que está listo hace años
+        self.assertEqual(d["porMes"]["2024-04"], {"n": 2, "fact": 10000, "cost": 2000})
+        self.assertIn("2024-04", d["meses"]); self.assertEqual(len(d["meses"]), 12)
+        # el ETag evita volver a bajar lo mismo (ni el resumen ni todas las órdenes)
+        self.assertEqual(a.get(url, headers={"If-None-Match": h["ETag"]})[0], 304)
+        code, _, hd = a.get("/api/data")
+        self.assertEqual(code, 200); self.assertTrue(hd["ETag"])
+        self.assertEqual(a.get("/api/data", headers={"If-None-Match": hd["ETag"]})[0], 304)
+        # al cambiar algo, cambia el sello y se vuelve a mandar todo
+        a.post("/api/orden", {"id": "res9", "cliente": "Otra", "tel": "11"})
+        code, _, hd2 = a.get("/api/data")
+        self.assertEqual(code, 200); self.assertNotEqual(hd2["ETag"], hd["ETag"])
+        # el sello mira TODA la base (es conservador): con cualquier cambio se vuelve a calcular
+        self.assertEqual(a.get(url, headers={"If-None-Match": h["ETag"]})[0], 200)
+        for i in ("res0", "res1", "res9"): self.assertEqual(a.delete("/api/orden/" + i)[0], 200)
 
     # ---- usuarios y roles
     def test_roles_y_gestion_de_usuarios(self):

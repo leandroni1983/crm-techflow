@@ -1,5 +1,6 @@
 """Capa HTTP: recibe el pedido, valida la sesión y delega en los servicios. No tiene lógica de negocio."""
 import json, os, re, secrets, time, traceback
+from hashlib import md5
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
@@ -11,12 +12,13 @@ from ..log import log
 from ..orders import delete_order, save_order
 from ..pdf import pdf_comprobante
 from ..qr import qr_matrix
+from ..resumen import datos as resumen_datos
 from ..security import check_pw, hash_pw, token_hash
 from ..service import NeedsDB, NoSeq
 
 WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 STATIC = os.path.realpath(os.path.join(WEB, "static"))
-PROTECTED_STATIC = {"js/app.js", "js/db.js"}  # el resto de /static es público (lo necesita la pantalla de login)
+PROTECTED_STATIC = {f"js/{n}.js" for n in ("app", "db", "util", "comun", "cat", "orden", "lista", "config", "panel", "modo")}  # el resto de /static es público (lo necesita la pantalla de login)
 ADMIN_CONFIG_KEYS = {"fallas", "equipos", "repuestos", "seg_clave"}  # claves de configuración que solo puede cambiar el administrador
 TYPES = {".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".png": "image/png",
          ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml"}
@@ -49,6 +51,13 @@ def make_handler(app):
             for k, v in extra: self.send_header(k, v)
             self.end_headers()
             self.wfile.write(body)
+
+        def _json_etag(self, body, extra=""):
+            """Manda un JSON con ETag propio de la aplicación. Si el navegador ya tiene lo mismo (If-None-Match),
+            responde 304 sin cuerpo: no vuelve a bajar todo el listado de órdenes."""
+            sello = 'W/"%s-%s"' % (svc.sello(), md5(str(extra).encode()).hexdigest()[:8])
+            if self.headers.get("If-None-Match") == sello: return self._send(304, b"", headers={"ETag": sello})
+            return self._send(200, body, headers={"ETag": sello})
 
         def _redirect(self, to):
             self.send_response(302); self.send_header("Location", to); self.send_header("Content-Length", "0"); self.end_headers()
@@ -176,7 +185,12 @@ def make_handler(app):
                 clave = cfg.pop("seg_clave", "")          # la clave secreta nunca sale del servidor
                 ordenes = svc.orders()
                 if clave: ordenes = [{**o, "seg": seg.token(clave, o["seq"], o["id"])} for o in ordenes]
-                return self._send(200, {"ordenes": ordenes, "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
+                return self._json_etag({"ordenes": ordenes, "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
+            if p == "/api/resumen":
+                # Agregados del panel: se calculan acá (la base es mucho más rápida que el celular).
+                q = parse_qs(u.query)
+                desde, hasta, tz = q.get("desde", [""])[0], q.get("hasta", [""])[0], q.get("tz", [""])[0]
+                return self._json_etag(resumen_datos(svc.orders(), svc.config(), desde, hasta, tz), f"{desde}|{hasta}|{tz}")
             if p == "/api/estado": return self._send(200, svc.status())
             if p == "/api/respaldo":
                 # Respaldo completo de la base en un archivo JSON (solo el administrador).

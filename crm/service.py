@@ -44,6 +44,19 @@ class DataService:
         return {"online": self.online, "pendientes": self.pend, "errores": self.errores, "reservados": len(self.block),
                 "motor": self.motor, "error": self.last_error if not self.online else ""}
 
+    def sello(self):
+        """Huella barata de TODO lo que se manda en /api/data (para el ETag): si nada cambió, el navegador se
+        ahorra bajar de nuevo todas las órdenes. No serializa las órdenes: mira la última modificación y la config."""
+        with self.lock:
+            ords = self.c_orders.values()
+            cfg = "|".join("%s=%s" % (k, v) for k, v in sorted(self.c_cfg.items()))
+            usr = "|".join("%s:%s" % (u["nombre"], u["rol"]) for u in sorted(self.c_users.values(), key=lambda u: u["nombre"]))
+            return "-".join((str(len(self.c_orders)),
+                             str(max((o.get("seq") or 0 for o in ords), default=0)),
+                             max((str(o.get("actualizada") or "") for o in ords), default=""),
+                             str(len(cfg)), str(abs(hash(cfg)) % 10 ** 10), str(len(usr)), str(abs(hash(usr)) % 10 ** 10),
+                             str(self.pend), str(self.errores), "1" if self.online else "0", str(len(self.block))))
+
     def _set_offline(self, msg):
         with self.lock:
             if self.online: log(f"⚠ Sin conexión con la base ({msg}). Trabajando en modo local; los cambios quedan en cola.")

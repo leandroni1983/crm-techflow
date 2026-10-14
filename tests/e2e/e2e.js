@@ -223,6 +223,14 @@ const ok = (c, m) => { if (!c) fallas++; console.log((c ? 'OK   ' : 'FALLA') + '
   if (await cardL.locator('.ord-body').isHidden()) await cardL.locator('.ord-line').click();
   await cardL.locator('[data-a="edit"]').click();
   await page.selectOption('#fSt', 'Entregado'); await page.click('#bSave'); await page.waitForTimeout(400);
+  // --- paginación: con muchas órdenes la lista se dibuja de a 50 (el celular no se traba)
+  for (let i = 0; i < 55; i++)
+    await page.request.post(BASE + '/api/orden', { data: { id: 'pag' + i, cliente: 'Pag' + i, tel: '11', estado: 'Recibido' } });
+  await page.reload(); await page.waitForSelector('.ord');
+  ok((await page.locator('.ord').count()) === 50, 'con muchas órdenes la lista dibuja solo las primeras 50');
+  ok((await page.locator('[data-a="mas"]').count()) === 1, 'con más de 50 órdenes aparece el botón para ver el resto');
+  await page.click('[data-a="mas"]'); await page.waitForTimeout(300);
+  ok((await page.locator('.ord').count()) > 50, 'el botón “ver más” muestra el resto de las órdenes');
   // --- PWA
   const man = await (await page.request.get(BASE + '/manifest.webmanifest')).json();
   const sizes = man.icons.map(i => i.sizes);
