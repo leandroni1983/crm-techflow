@@ -2,7 +2,8 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const BASE = process.env.BASE_URL, DATA = process.env.DATA_DIR, SIM = process.env.SIM_FILE, ASSETS = process.env.ASSETS_DIR;
 const PASS = process.env.ADMIN_PASSWORD || 'Secreta123';
-const ok = (c, m) => console.log((c ? 'OK   ' : 'FALLA') + ' ' + m);
+let fallas = 0;
+const ok = (c, m) => { if (!c) fallas++; console.log((c ? 'OK   ' : 'FALLA') + ' ' + m); };
 (async () => {
   const br = await chromium.launch(); const ctx = await br.newContext({ acceptDownloads: true, viewport: { width: 1100, height: 900 } });
   const page = await ctx.newPage(); const errs = [];
@@ -183,7 +184,24 @@ const ok = (c, m) => console.log((c ? 'OK   ' : 'FALLA') + ' ' + m);
   await page.waitForFunction(n => document.querySelectorAll('.ord').length === n, nOrd, { timeout: 8000 });
   ok((await page.textContent('#cPapelList')).includes('Vacía'), 'recuperarla la devuelve a la lista y deja la papelera vacía');
   await page.click('#cCan'); await page.waitForTimeout(200);
-  // --- PWA
+  // --- inventario de repuestos
+  await page.click('#bCfg'); await page.waitForSelector('#cInvList');
+  await page.click('#bInvAdd');
+  await page.fill('#cInvList [data-ik="nombre"]', 'Batería');
+  await page.fill('#cInvList [data-ik="stock"]', '3');
+  await page.fill('#cInvList [data-ik="minimo"]', '1');
+  await page.fill('#cInvList [data-ik="costo"]', '6000');
+  ok((await page.textContent('#cInvList')).includes('disp. 2'), 'la disponibilidad se calcula: stock 3 menos 1 usada en la orden');
+  await page.fill('#cInvList [data-ik="minimo"]', '3');
+  ok((await page.textContent('#cInvAlerta')).includes('Para reponer'), 'el inventario avisa cuando queda por debajo del mínimo');
+  await page.click('#cSave'); await page.waitForTimeout(400);
+  ok((await page.textContent('#modo')).includes('repuesto'), 'el aviso de reposición también aparece arriba, siempre a la vista');
+  await page.click('#bNew');
+  ok((await page.locator('#fRepCat option').allTextContents()).join(' ').includes('Batería'), 'el repuesto del inventario se puede elegir al cargar una orden');
+  await page.selectOption('#fRepCat', { index: 1 });
+  ok((await page.inputValue('#fRep input[data-k="desc"]')) === 'Batería' && (await page.inputValue('#fRep input[data-k="costo"]')) === '6000'
+    && (await page.inputValue('#fRep input[data-k="cant"]')) === '1', 'elegir del inventario completa el repuesto, la cantidad y el costo');
+  await page.click('#bCan'); await page.waitForTimeout(200);
   const man = await (await page.request.get(BASE + '/manifest.webmanifest')).json();
   const sizes = man.icons.map(i => i.sizes);
   ok(man.display === 'standalone' && !!man.name && man.start_url === '/' && man.scope === '/' && sizes.includes('192x192') && sizes.includes('512x512')
@@ -199,4 +217,5 @@ const ok = (c, m) => console.log((c ? 'OK   ' : 'FALLA') + ' ' + m);
   const reales = errs.filter(e => !/401|429|sesión vencida|ERR_INTERNET_DISCONNECTED/.test(e)); ok(reales.length === 0, 'sin errores de consola/JS ' + JSON.stringify(reales));
   await page.screenshot({ path: ASSETS + '/ui.png', fullPage: false });
   await br.close();
+  if (fallas) { console.error(`\n${fallas} comprobación(es) fallaron.`); process.exit(1); }
 })().catch(e => { console.error('ERROR TEST', e); process.exit(1); });

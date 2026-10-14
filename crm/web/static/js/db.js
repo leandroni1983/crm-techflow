@@ -7,6 +7,7 @@ const DEFAULTS = {
   checklist_items: 'Enciende, Con batería, Con cargador, Pantalla rota, Golpes visibles, Con disco / memoria',
   fallas: 'No enciende\nNo da imagen / no arranca\nNo carga / batería\nLíquido / mojado\nPantalla rota\nTeclado / botones\nLento / virus / sistema\nNo conecta (WiFi/red)\nLimpieza / mantenimiento\nOtro',
   equipos: 'Celular\nNotebook\nPC de escritorio\nTablet\nImpresora\nMonitor\nTV\nConsola\nElectrodoméstico\nOtro',
+  repuestos: '[]',
   plantillas: 'Limpieza y pasta térmica|Limpieza interna y cambio de pasta térmica|15000\nFormateo e instalación|Formateo e instalación del sistema operativo y programas|20000',
   msg: 'Hola {cliente}! Te escribimos de {taller}. Tu orden de servicio es la N° {numero} ({equipo}). Estado actual: {estado}.',
   msgP: 'Hola {cliente}! Te escribimos de {taller} por tu orden N° {numero} ({equipo}).\n\nDiagnóstico: {diagnostico}\n\nPresupuesto: ${presupuesto}\n\nSi estás de acuerdo, respondé este mensaje para avanzar con la reparación.',

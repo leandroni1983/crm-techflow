@@ -17,7 +17,7 @@ from ..service import NeedsDB, NoSeq
 WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 STATIC = os.path.realpath(os.path.join(WEB, "static"))
 PROTECTED_STATIC = {"js/app.js", "js/db.js"}  # el resto de /static es público (lo necesita la pantalla de login)
-ADMIN_CONFIG_KEYS = {"fallas", "equipos"}  # claves de configuración que solo puede cambiar el administrador
+ADMIN_CONFIG_KEYS = {"fallas", "equipos", "repuestos"}  # claves de configuración que solo puede cambiar el administrador
 TYPES = {".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".png": "image/png",
          ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml"}
 NAME_RE = re.compile(r"^[a-z0-9_.-]{3,30}$")

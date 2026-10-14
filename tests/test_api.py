@@ -174,6 +174,11 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(t.post("/api/config", {"equipos": "Solo este"})[0], 403)
         self.assertEqual(a.post("/api/config", {"equipos": "Notebook\nCelular\nOtro"})[0], 200)
         self.assertEqual(a.get("/api/data")[1]["config"]["equipos"], "Notebook\nCelular\nOtro")
+        # y el inventario de repuestos (se guarda como lista JSON dentro de la configuración)
+        inv = '[{"id": "r1", "nombre": "Batería", "stock": "3", "minimo": "1", "costo": "6000"}]'
+        self.assertEqual(t.post("/api/config", {"repuestos": inv})[0], 403)
+        self.assertEqual(a.post("/api/config", {"repuestos": inv})[0], 200)
+        self.assertIn("Batería", a.get("/api/data")[1]["config"]["repuestos"])
         self.assertEqual(t.post("/api/config", {"taller": "Otro taller"})[0], 200)   # el resto de la config sí puede
         self.assertEqual(a.delete("/api/usuarios/tec1")[0], 200); self.assertEqual(t.get("/api/data")[0], 401)  # sus sesiones se cierran
 

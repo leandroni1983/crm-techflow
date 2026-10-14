@@ -78,7 +78,7 @@ function drawEquipos() {
   if (cur && L.includes(cur)) $('fEt').value = cur;
 }
 const nombreEq = o => [o.equipo, o.marca].filter(Boolean).join(' ');
-const costoRep = o => o.repuestos.reduce((a, r) => a + num(r.costo), 0);
+const costoRep = o => o.repuestos.reduce((a, r) => a + num(r.costo) * Math.max(1, Math.round(num(r.cant) || 1)), 0);
 const diasDesde = iso => iso ? (Date.now() - new Date(iso).getTime()) / 864e5 : 0;
 
 /* ============ NÚMERO DE ORDEN, TELÉFONO, MENSAJES ============ */
@@ -214,9 +214,10 @@ function drawModo() {
   const n = DB.api ? localOrders().length : 0, s = DB.sync || { online: true, pendientes: 0, errores: 0, motor: 'la base de datos' };
   const cola = s.pendientes ? ` · ${s.pendientes} cambio${s.pendientes > 1 ? 's' : ''} ${s.online ? 'sincronizándose…' : 'pendiente' + (s.pendientes > 1 ? 's' : '') + ' (se envían solos al volver la conexión)'}` : '';
   const err = s.errores ? ` · ✖ ${s.errores} cambio${s.errores > 1 ? 's' : ''} con error (avisá al administrador)` : '';
+  const rep = repBajos();
   $('modo').className = 'modo ' + (DB.api && s.online && !s.errores ? 'ok' : 'warn');
   $('modo').innerHTML = DB.api
-    ? `<span>${s.online ? '●' : '⚠️'} ${s.online ? 'Base de datos: ' + esc(s.motor) : 'Sin conexión con la base de datos: trabajando en modo local'}${cola}${err} · 👤 ${esc(DB.usuario?.nombre || '')}</span>` + (n ? `<button id="bImp">Importar ${n} órdenes que quedaron en el navegador</button>` : '') + '<button id="bOut">Salir</button>'
+    ? `<span>${s.online ? '●' : '⚠️'} ${s.online ? 'Base de datos: ' + esc(s.motor) : 'Sin conexión con la base de datos: trabajando en modo local'}${cola}${err}${rep.length ? ` · ⚠️ ${rep.length} repuesto${rep.length > 1 ? 's' : ''} para reponer` : ''} · 👤 ${esc(DB.usuario?.nombre || '')}</span>` + (n ? `<button id="bImp">Importar ${n} órdenes que quedaron en el navegador</button>` : '') + '<button id="bOut">Salir</button>'
     : '<span>⚠️ Modo navegador: los datos NO se guardan en la base. Ejecutá `python -m crm` y abrí http://localhost:8000 (el PDF y el QR necesitan el servidor)</span>';
 }
 /* Estado de sincronización: se consulta cada 10 s; si volvió la conexión y se vació la cola, se recarga la lista */
@@ -376,11 +377,11 @@ function drawChk(sel) {
   $('fChk').innerHTML = items.length ? items.map(i => `<label><input type="checkbox" value="${esc(i)}" ${sel.includes(i) ? 'checked' : ''}> ${esc(i)}</label>`).join('') : '<span class="mut">Definí la lista en ⚙️</span>';
 }
 function totRep() {
-  const t = tmpRep.reduce((a, r) => a + num(r.costo), 0), m = num($('fMo').value);
+  const t = tmpRep.reduce((a, r) => a + num(r.costo) * cantR(r), 0), m = num($('fMo').value);
   $('fRepTot').textContent = t ? `Costo repuestos: ${money(t)}` + (m ? ` · Ganancia: ${money(m - t)}` : '') : '';
 }
 function drawRep() {
-  $('fRep').innerHTML = tmpRep.map((r, i) => `<div class="rep"><input data-ri="${i}" data-k="desc" placeholder="Repuesto" value="${esc(r.desc)}"><input data-ri="${i}" data-k="costo" type="number" min="0" placeholder="Costo" value="${esc(r.costo)}"><button type="button" data-rd="${i}">×</button></div>`).join('');
+  $('fRep').innerHTML = tmpRep.map((r, i) => `<div class="rep"><input data-ri="${i}" data-k="desc" placeholder="Repuesto" value="${esc(r.desc)}"><input data-ri="${i}" data-k="cant" type="number" min="1" placeholder="Cant." value="${cantR(r)}"><input data-ri="${i}" data-k="costo" type="number" min="0" placeholder="Costo" value="${esc(r.costo)}"><button type="button" data-rd="${i}">×</button></div>`).join('');
   totRep();
 }
 const plantillas = () => cfg().plantillas.split('\n').map(l => l.split('|').map(s => s.trim())).filter(a => a[0]);
@@ -417,7 +418,7 @@ function openOrd(o) {
   ftManual = !!b.falla_tipo; etManual = !!b.equipo_tipo;
   $('fSt').value = b.estado || ESTADOS[0]; $('fPg').checked = !!b.pagado;
   tmpImgs = [...b.imagenes]; tmpRep = b.repuestos.map(r => ({ ...r }));
-  drawChk(b.checklist); drawRep(); drawImgs(); $('fImg').value = '';
+  drawChk(b.checklist); drawRep(); drawRepCat(); drawImgs(); $('fImg').value = '';
   $('fPl').innerHTML = '<option value="">— elegir plantilla —</option>' + plantillas().map((p, i) => `<option value="${i}">${esc(p[0])}</option>`).join('');
   pad1.set(b.firma); pad2.set(b.firma_entrega);
   $('fsHist').style.display = o ? '' : 'none';
@@ -433,7 +434,7 @@ $('fEq').oninput = () => { if (etManual) return; const c = detectarEquipo($('fEq
 $('bCan').onclick = () => $('dOrd').close();
 $('fImg').onchange = async e => { for (const f of e.target.files) tmpImgs.push(await compress(f)); drawImgs(); };
 $('fImgs').onclick = e => { if (e.target.dataset.x) { tmpImgs.splice(+e.target.dataset.x, 1); drawImgs(); } };
-$('bRep').onclick = () => { tmpRep.push({ desc: '', costo: '' }); drawRep(); };
+$('bRep').onclick = () => { tmpRep.push({ desc: '', cant: '1', costo: '' }); drawRep(); };
 $('fRep').oninput = e => { const i = e.target.dataset.ri; if (i !== undefined) { tmpRep[i][e.target.dataset.k] = e.target.value; totRep(); } };
 $('fRep').onclick = e => { if (e.target.dataset.rd !== undefined) { tmpRep.splice(+e.target.dataset.rd, 1); drawRep(); } };
 $('fMo').oninput = totRep;
@@ -475,13 +476,13 @@ const CFG = { taller: 'cNom', taller_datos: 'cDat', prefijo: 'cPre', pais: 'cPai
   et_alto: 'cEtH', garantia_dias: 'cGar', dias_alerta: 'cAle', checklist_items: 'cChk', plantillas: 'cPla', msg: 'cMsg', msgP: 'cMsgP',
   msgListo: 'cMsgL', msgPDF: 'cMsgPDF', msgC: 'cMsgC', condiciones: 'cCond', msgEntrega: 'cMsgE', condiciones_entrega: 'cCondE', fallas: 'cFallas',
   equipos: 'cEquipos' };
-const ADMIN_CFG = ['fallas', 'equipos'];   // claves de configuración que solo puede cambiar el administrador
+const ADMIN_CFG = ['fallas', 'equipos', 'repuestos'];   // claves de configuración que solo puede cambiar el administrador
 const esAdmin = () => DB.api && DB.usuario?.rol === 'admin';
 function prevLogo() { const i = $('cLogoPrev'); i.style.display = tmpLogo ? 'block' : 'none'; i.src = tmpLogo || ''; }
 $('bCfg').onclick = () => {
   const c = cfg(); for (const [k, id] of Object.entries(CFG)) $(id).value = c[k] ?? '';
   $('cLogoSolo').checked = c.logo_solo === '1'; tmpLogo = c.logo || ''; prevLogo();
-  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); drawRenombres(); drawPapelera(); $('dCfg').showModal();
+  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); drawRenombres(); drawPapelera(); if (esAdmin()) abrirInv(); $('dCfg').showModal();
 };
 $('cLogo').onchange = async e => { if (e.target.files[0]) { tmpLogo = await compress(e.target.files[0], 400, .85); prevLogo(); } };
 $('cLogoDel').onclick = () => { tmpLogo = ''; $('cLogo').value = ''; prevLogo(); };
@@ -491,11 +492,12 @@ $('cSave').onclick = async () => {
   for (const [k, id] of Object.entries(CFG)) nc[k] = $(id).value;
   if (nc.fallas) nc.fallas = listaFallas(nc.fallas).join('\n');
   if (nc.equipos) nc.equipos = listaEquipos(nc.equipos).join('\n');
+  if (invDibujada) nc.repuestos = JSON.stringify(leerInv());
   for (const k of ADMIN_CFG) if (!esAdmin()) delete nc[k];   // el técnico no manda las claves de administrador
   nc.pais = nc.pais.replace(/\D/g, '') || '549';
   for (const k of ['pdfAncho', 'pdfAlto', 'et_ancho', 'et_alto', 'garantia_dias', 'dias_alerta']) nc[k] = nc[k] || DEFAULTS[k];
   nc.logo = tmpLogo; nc.logo_solo = $('cLogoSolo').checked ? '1' : '0';
-  if (await DB.saveConfig(nc)) { $('dCfg').close(); drawFallas(); drawEquipos(); refresh(); drawModo(); }
+  if (await DB.saveConfig(nc)) { $('dCfg').close(); invDibujada = false; drawFallas(); drawEquipos(); refresh(); drawModo(); }
 };
 
 /* ---- cuenta y usuarios ---- */
@@ -508,6 +510,7 @@ async function cuentas() {
   const admin = DB.api && u?.rol === 'admin'; $('cUsr').style.display = admin ? '' : 'none'; $('cFall').style.display = admin ? '' : 'none';
   $('cEqu').style.display = admin ? '' : 'none';
   $('cPapel').style.display = admin ? '' : 'none';
+  $('cInv').style.display = admin ? '' : 'none';
   if (!admin) return;
   try {
     const L = await api('/api/usuarios', 'GET'); DB.tecnicos = L.map(x => x.nombre); drawTec();
@@ -525,6 +528,69 @@ $('bUAdd').onclick = async () => {
 $('cUsrList').onclick = async e => {
   const n = e.target.dataset.ud; if (!n || !confirm(`¿Borrar el usuario ${n}?`)) return;
   try { await api('/api/usuarios/' + encodeURIComponent(n), 'DELETE'); cuentas(); } catch (x) { alert(x.message); }
+};
+
+/* ============ INVENTARIO DE REPUESTOS ============
+   El catálogo (nombre, stock y mínimo de cada repuesto) vive en la configuración: lo edita el administrador
+   desde Configuración, así que no hace falta ninguna tabla nueva. La disponibilidad no se guarda: se calcula
+   como stock menos las unidades que están usando las órdenes activas, así nunca queda desfasada. */
+const cantR = r => Math.max(1, Math.round(num(r.cant) || 1));
+function repCat() { try { const L = JSON.parse(cfg().repuestos || '[]'); return Array.isArray(L) ? L : []; } catch (e) { return []; } }
+const mismoRep = (r, it) => r.rid ? r.rid === it.id : String(r.desc || '').trim().toLowerCase() === String(it.nombre || '').trim().toLowerCase();
+/* Unidades puestas en órdenes. Si estamos editando una orden, sus filas guardadas no se cuentan: cuenta el borrador. */
+function repUsados(it, editando) {
+  let n = 0;
+  for (const o of DB.ordenes) if (!editando || o.id !== editando.id) n += (o.repuestos || []).filter(r => mismoRep(r, it)).reduce((m, r) => m + cantR(r), 0);
+  if (editando) n += tmpRep.filter(r => mismoRep(r, it)).reduce((m, r) => m + cantR(r), 0);
+  return n;
+}
+const repDisp = (it, editando) => num(it.stock) - repUsados(it, editando);
+const repBajos = () => repCat().filter(it => repDisp(it) <= num(it.minimo));
+const repAlerta = () => { const b = repBajos(); return b.length ? `⚠️ Para reponer: ${b.map(x => x.nombre).join(', ')}` : ''; };
+function drawRepCat() {
+  const L = repCat();
+  $('fRepCat').style.display = L.length ? '' : 'none';
+  $('fRepCat').innerHTML = '<option value="">— del inventario —</option>' +
+    L.map(it => `<option value="${esc(it.id)}">${esc(it.nombre)} (disp. ${repDisp(it, editing)})</option>`).join('');
+}
+/* ---- catálogo: edición en Configuración (solo administrador) ---- */
+let catTmp = [], invDibujada = false;
+const nuevoIdRep = () => 'r' + Math.random().toString(36).slice(2, 8);
+function invFila(it, i) {
+  const d = repDisp(it), bajo = d <= num(it.minimo);
+  return `<div class="rep inv" data-inv="${i}" data-inv-id="${esc(it.id)}">
+    <input data-ik="nombre" placeholder="Repuesto" value="${esc(it.nombre)}">
+    <input data-ik="stock" type="number" min="0" placeholder="Stock" value="${esc(it.stock)}">
+    <input data-ik="minimo" type="number" min="0" placeholder="Mínimo" value="${esc(it.minimo)}">
+    <input data-ik="costo" type="number" min="0" placeholder="Costo" value="${esc(it.costo)}">
+    <span class="mut${bajo ? ' bajo' : ''}">disp. ${d}${bajo ? ' · reponer' : ''}</span>
+    <button type="button" data-idel="${i}" title="Quitar del inventario">×</button></div>`;
+}
+function drawInv() {
+  invDibujada = true;
+  const L = catTmp;
+  $('cInvList').innerHTML = L.length ? L.map(invFila).join('') : '<div class="mut">Todavía no cargaste repuestos. Los que agregues acá aparecen al cargar una orden y se descuentan solos al usarlos.</div>';
+  $('cInvAlerta').textContent = repAlerta();
+}
+function abrirInv() { catTmp = repCat().map(x => ({ ...x })); drawInv(); }
+const leerInv = () => [...$('cInvList').querySelectorAll('[data-inv]')].map(d => ({
+  id: d.dataset.invId, nombre: d.querySelector('[data-ik="nombre"]').value.trim(), stock: d.querySelector('[data-ik="stock"]').value,
+  minimo: d.querySelector('[data-ik="minimo"]').value, costo: d.querySelector('[data-ik="costo"]').value
+})).filter(it => it.nombre);
+$('bInvAdd').onclick = () => { catTmp = leerInv(); catTmp.push({ id: nuevoIdRep(), nombre: '', stock: '', minimo: '', costo: '' }); drawInv(); };
+$('cInvList').onclick = e => { const b = e.target.closest('[data-idel]'); if (!b) return; catTmp = leerInv().filter((_, i) => i !== +b.dataset.idel); drawInv(); };
+$('cInvList').oninput = e => {
+  const fila = e.target.closest('[data-inv]'); if (!fila) return;
+  const it = leerInv()[+fila.dataset.inv]; if (!it) return;
+  const d = repDisp(it), bajo = d <= num(it.minimo), sp = fila.querySelector('.mut');
+  sp.textContent = `disp. ${d}` + (bajo ? ' · reponer' : ''); sp.className = 'mut' + (bajo ? ' bajo' : '');
+  const bajos = leerInv().filter(x => repDisp(x) <= num(x.minimo));
+  $('cInvAlerta').textContent = bajos.length ? `⚠️ Para reponer: ${bajos.map(x => x.nombre).join(', ')}` : '';
+};
+$('fRepCat').onchange = () => {
+  const it = repCat().find(x => x.id === $('fRepCat').value); $('fRepCat').value = '';
+  if (!it) return;
+  tmpRep.push({ desc: it.nombre, cant: '1', costo: it.costo || '', rid: it.id }); drawRep();
 };
 
 /* ---- renombrar una categoría ya usada (actualiza también las órdenes viejas) ---- */
@@ -615,6 +681,7 @@ const COLS = [
   ['Técnico', o => o.tecnico, 'txt'], ['Tipo de falla', o => o.falla_tipo, 'txt'], ['Falla', o => o.problema, 'txt'], ['Diagnóstico', o => o.diagnostico, 'txt'], ['Presupuesto', o => num(o.monto), 'money'],
   ['Seña', o => num(o.sena), 'money'], ['Pagado', o => o.pagado ? 'Sí' : 'No', 'txt'], ['Costo repuestos', costoRep, 'money'],
   ['Ganancia', o => num(o.monto) - costoRep(o), 'money'], ['Fecha entrega', o => fmtD(o.entrega_fecha), 'txt'],
+  ['Repuestos', o => (o.repuestos || []).map(r => (r.desc || '') + (cantR(r) > 1 ? ' x' + cantR(r) : '')).filter(Boolean).join(', '), 'txt'],
   ['Garantía hasta', o => { const g = garantiaHasta(o); return g ? g.toLocaleDateString('es-AR') : ''; }, 'txt']
 ];
 function descargarCSV(rows, nombre) {
@@ -725,6 +792,9 @@ function resumen() {
       <section class="pane"><h4>Equipos más frecuentes</h4>${barrasH(items(equiposCat, 8))}</section>
       <section class="pane"><h4>Marcas más frecuentes</h4>${barrasH(items(ing.map(o => (o.marca || '').trim().toLowerCase()).filter(Boolean), 8))}</section>
       <section class="pane"><h4>Fallas más comunes</h4>${barrasH(items(fallasCat, 8))}</section>
+      ${repCat().length ? `<section class="pane"><h4>Repuestos a reponer</h4>${repBajos().length
+        ? repBajos().map(it => `<div class="kv"><span>${esc(it.nombre)}</span><span class="mut">disp. ${repDisp(it)} · mínimo ${esc(it.minimo)}</span></div>`).join('')
+        : '<div class="mut">Todo con stock suficiente.</div>'}</section>` : ''}
     </div>`;
 }
 $('rPer').onchange = () => { $('rMesW').style.display = $('rPer').value === 'mes' ? '' : 'none'; resumen(); };

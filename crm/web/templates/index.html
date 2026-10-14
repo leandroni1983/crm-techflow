@@ -128,7 +128,7 @@
     </div>
     <label>Repuestos y costos (interno)</label>
     <div id="fRep"></div>
-    <div class="acts"><button type="button" id="bRep">+ Repuesto</button><span id="fRepTot" class="mut"></span></div>
+    <div class="acts"><button type="button" id="bRep">+ Repuesto</button><select id="fRepCat"></select><span id="fRepTot" class="mut"></span></div>
   </fieldset>
 
   <fieldset><legend>Fotos y firma</legend>
@@ -196,6 +196,11 @@
     <label>Las órdenes que se borran quedan acá: se pueden recuperar o borrar para siempre.</label>
     <div id="cPapelList"></div>
     <div class="acts"><button type="button" id="bResp">💾 Descargar respaldo</button><button type="button" class="dg" id="bVaciar">🗑️ Vaciar papelera</button></div>
+  </fieldset>
+  <fieldset id="cInv"><legend>Inventario de repuestos (solo administrador)</legend>
+    <label>Stock y mínimo de cada repuesto. La disponibilidad se calcula sola: stock menos lo que están usando las órdenes activas.</label>
+    <div id="cInvList"></div>
+    <div class="acts"><button type="button" id="bInvAdd">+ Repuesto al inventario</button><span id="cInvAlerta" class="mut"></span></div>
   </fieldset>
   <fieldset><legend>Mensajes de WhatsApp</legend>
     <label>General — {cliente} {numero} {equipo} {estado} {taller}</label><textarea id="cMsg" style="min-height:70px"></textarea>

@@ -52,7 +52,10 @@ label.inl{display:flex;gap:6px;align-items:center;color:var(--tx);margin-top:8px
 @media(max-width:480px){.g2{grid-template-columns:1fr}}
 .empty{text-align:center;color:var(--mut);padding:34px}
 .chk{display:flex;flex-wrap:wrap;gap:6px 14px}.chk label{display:flex;gap:5px;align-items:center;color:var(--tx);margin:0}
-.rep{display:grid;grid-template-columns:1fr 110px 34px;gap:6px;margin-bottom:6px}
+.rep{display:grid;grid-template-columns:1fr 70px 100px 34px;gap:6px;margin-bottom:6px;align-items:center}
+/* Inventario (Configuración): nombre, stock, mínimo, costo, disponibilidad calculada y quitar. */
+.rep.inv{grid-template-columns:1fr 66px 66px 86px auto 34px}
+.mut.bajo{color:var(--dg);font-weight:600}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .chip{font-size:13px;padding:6px 11px;border-radius:99px}
 .chip:hover{background:color-mix(in srgb,var(--ac) 10%,var(--card))}
