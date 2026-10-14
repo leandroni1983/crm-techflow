@@ -7,8 +7,10 @@ const money = x => '$ ' + Math.round(x).toLocaleString('es-AR');
 const hoy = () => { const d = new Date(); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; };
 const ahora = () => new Date().toISOString();
 const fmtD = s => s ? s.split('-').reverse().join('/') : '';
+/* Fecha y hora legible para las marcas de tiempo completas (por ejemplo, cuándo se mandó algo a la papelera). */
+const fmtDT = s => { const d = s ? new Date(s) : null; return d && !isNaN(d) ? `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}` : fmtD(s); };
 const cfg = () => DB.data.config;
-const find = id => DB.data.ordenes.find(x => x.id === id);
+const find = id => DB.data.ordenes.find(x => x.id === id);   // incluye las de la papelera (se usan al recuperarlas)
 const ESTADOS = ['Recibido', 'En diagnóstico', 'Presupuesto', 'Esperando repuesto', 'En reparación', 'Listo para retirar', 'Entregado'];
 /* Tipos de falla: categoría fija que se elige en el formulario y se cuenta en "Fallas más comunes" (no texto libre).
    El administrador puede editar la lista desde Configuración; esto es solo el valor por defecto. */
@@ -251,7 +253,7 @@ const QUICK = {
   gar: ['En garantía', enGarantia]
 };
 function drawChips() {
-  const L = DB.data.ordenes;
+  const L = DB.ordenes;
   $('chips').innerHTML = `<button class="chip ${quick ? '' : 'on'}" data-q="">Todos (${L.length})</button>` + Object.entries(QUICK).map(([k, [t, fn]]) => {
     const n = L.filter(fn).length;
     return n || quick === k ? `<button class="chip ${quick === k ? 'on' : ''}" data-q="${k}">${k === 'viejos' ? `Sin retirar +${alertaDias()} días` : t} (${n})</button>` : '';
@@ -294,17 +296,17 @@ function card(o) {
       <button data-a="print" data-id="${o.id}">🖨️ Imprimir</button>
       <button data-a="label" data-id="${o.id}">🏷️ Etiqueta</button>
       <button data-a="edit" data-id="${o.id}">Editar</button>
-      <button class="dg" data-a="del" data-id="${o.id}">Borrar</button>
+      <button class="dg" data-a="del" data-id="${o.id}" title="Manda la orden a la papelera (se puede recuperar desde Configuración)">🗑️ Borrar</button>
     </div></div></div>`;
 }
 function render() {
   drawChips();
   const q = $('q').value.toLowerCase(), f = $('fs').value, tf = $('fT').value, qf = quick ? QUICK[quick][1] : () => true;
-  const L = DB.data.ordenes.filter(o => (!f || o.estado === f) && (!tf || o.tecnico === (tf === '@yo' ? yo() : tf)) && qf(o) &&
+  const L = DB.ordenes.filter(o => (!f || o.estado === f) && (!tf || o.tecnico === (tf === '@yo' ? yo() : tf)) && qf(o) &&
     (numOrden(o) + o.cliente + nombreEq(o) + (o.equipo_tipo || '') + o.tel + o.serie).toLowerCase().includes(q));
   $('list').innerHTML = L.length ? L.map(card).join('') : '<div class="empty">No hay órdenes para mostrar. Creá una con “+ Nueva orden”.</div>';
   if (abierta) { if ($('list').querySelector('.ord[data-id="' + CSS.escape(abierta) + '"]')) expandir(abierta, true); else abierta = null; }
-  $('ordCount').textContent = `(${L.length}${L.length !== DB.data.ordenes.length ? ' de ' + DB.data.ordenes.length : ''})`;
+  $('ordCount').textContent = `(${L.length}${L.length !== DB.ordenes.length ? ' de ' + DB.ordenes.length : ''})`;
   llenarDL();
 }
 /* Acordeón: una orden abierta a la vez. Al tocar la línea se despliega el detalle completo. */
@@ -320,9 +322,9 @@ function toggleOrd(id) {
   abierta = id; expandir(id, true);
 }
 function llenarDL() {
-  const m = new Map(); DB.data.ordenes.forEach(o => { if (o.tel && !m.has(normTel(o.tel))) m.set(normTel(o.tel), o); });
+  const m = new Map(); DB.ordenes.forEach(o => { if (o.tel && !m.has(normTel(o.tel))) m.set(normTel(o.tel), o); });
   $('dlTel').innerHTML = [...m.values()].map(o => `<option value="${esc(o.tel)}">${esc(o.cliente)}</option>`).join('');
-  $('dlCli').innerHTML = [...new Set(DB.data.ordenes.map(o => o.cliente).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join('');
+  $('dlCli').innerHTML = [...new Set(DB.ordenes.map(o => o.cliente).filter(Boolean))].map(c => `<option value="${esc(c)}">`).join('');
 }
 $('list').onclick = async e => {
   const t = e.target, an = t.closest('a[data-log]');
@@ -338,7 +340,7 @@ $('list').onclick = async e => {
     if (a === 'print') return imprimir(o);
     if (a === 'label') return etiquetar(o);
     if (a === 'edit') return openOrd(o);
-    if (a === 'del' && confirm('¿Borrar esta orden?')) { await DB.remove(o.id); abierta = null; refresh(); }
+    if (a === 'del') return aPapelera(o);
     return;
   }
 };
@@ -382,7 +384,7 @@ function drawRep() {
   totRep();
 }
 const plantillas = () => cfg().plantillas.split('\n').map(l => l.split('|').map(s => s.trim())).filter(a => a[0]);
-function relacionados(tel, id) { const k = normTel(tel); return k ? DB.data.ordenes.filter(x => x.id !== id && normTel(x.tel) === k) : []; }
+function relacionados(tel, id) { const k = normTel(tel); return k ? DB.ordenes.filter(x => x.id !== id && normTel(x.tel) === k) : []; }
 function showCliHist() {
   const L = relacionados($('fTel').value, editing?.id);
   $('fCliHist').innerHTML = L.length ? `<b>${L.length} reparación(es) anterior(es):</b><br>` + L.slice(0, 5).map(x =>
@@ -447,7 +449,7 @@ $('fTel').onchange = () => {
   showCliHist();
 };
 $('fCli').onchange = () => {
-  const v = $('fCli').value.trim().toLowerCase(), m = DB.data.ordenes.find(x => x.cliente.toLowerCase() === v);
+  const v = $('fCli').value.trim().toLowerCase(), m = DB.ordenes.find(x => x.cliente.toLowerCase() === v);
   if (m && !$('fTel').value) { $('fTel').value = m.tel; if (!$('fDir').value) $('fDir').value = m.direccion; }
   showCliHist();
 };
@@ -479,7 +481,7 @@ function prevLogo() { const i = $('cLogoPrev'); i.style.display = tmpLogo ? 'blo
 $('bCfg').onclick = () => {
   const c = cfg(); for (const [k, id] of Object.entries(CFG)) $(id).value = c[k] ?? '';
   $('cLogoSolo').checked = c.logo_solo === '1'; tmpLogo = c.logo || ''; prevLogo();
-  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); drawRenombres(); $('dCfg').showModal();
+  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); drawRenombres(); drawPapelera(); $('dCfg').showModal();
 };
 $('cLogo').onchange = async e => { if (e.target.files[0]) { tmpLogo = await compress(e.target.files[0], 400, .85); prevLogo(); } };
 $('cLogoDel').onclick = () => { tmpLogo = ''; $('cLogo').value = ''; prevLogo(); };
@@ -505,6 +507,7 @@ async function cuentas() {
   const u = DB.usuario; $('cQuien').textContent = DB.api ? `Sesión: ${u?.nombre} (${u?.rol === 'admin' ? 'administrador' : 'técnico'})` : 'Sin servidor: no hay usuarios.';
   const admin = DB.api && u?.rol === 'admin'; $('cUsr').style.display = admin ? '' : 'none'; $('cFall').style.display = admin ? '' : 'none';
   $('cEqu').style.display = admin ? '' : 'none';
+  $('cPapel').style.display = admin ? '' : 'none';
   if (!admin) return;
   try {
     const L = await api('/api/usuarios', 'GET'); DB.tecnicos = L.map(x => x.nombre); drawTec();
@@ -526,7 +529,7 @@ $('cUsrList').onclick = async e => {
 
 /* ---- renombrar una categoría ya usada (actualiza también las órdenes viejas) ---- */
 const CAT_KEY = { fallas: 'falla_tipo', equipos: 'equipo_tipo' };
-const usadasCat = clave => [...new Set(DB.data.ordenes.map(o => (o[CAT_KEY[clave]] || '').trim()).filter(Boolean))];
+const usadasCat = clave => [...new Set(DB.ordenes.map(o => (o[CAT_KEY[clave]] || '').trim()).filter(Boolean))];
 function drawRenombres() {
   if (!esAdmin()) { $('cFallRen').innerHTML = ''; $('cEquRen').innerHTML = ''; return; }
   for (const [clave, id] of [['fallas', 'cFallRen'], ['equipos', 'cEquRen']]) {
@@ -550,6 +553,54 @@ async function renombrarCat(clave, de) {
 }
 $('cFallRen').onclick = e => { const b = e.target.closest('[data-ren]'); if (b) renombrarCat(b.dataset.clave, b.dataset.ren); };
 $('cEquRen').onclick = e => { const b = e.target.closest('[data-ren]'); if (b) renombrarCat(b.dataset.clave, b.dataset.ren); };
+
+/* ---- papelera (borrado recuperable) y respaldo ---- */
+function drawPapelera() {
+  const L = DB.data.ordenes.filter(o => o.borrada).sort((a, b) => String(b.borrada).localeCompare(String(a.borrada)));
+  $('cPapelList').innerHTML = L.length
+    ? L.map(o => `<div class="kv">
+        <span>${esc(numOrden(o))} · ${esc(o.cliente)}<span class="mut"> · ${esc(fmtDT(o.borrada))}</span></span>
+        <span><button type="button" data-res="${esc(o.id)}">Recuperar</button> <button type="button" class="dg" data-pur="${esc(o.id)}">Borrar definitivo</button></span>
+      </div>`).join('')
+    : '<div class="mut">Vacía. Acá aparecen las órdenes borradas, para recuperarlas si fue un error.</div>';
+  $('bVaciar').disabled = !L.length;
+}
+async function aPapelera(o) {
+  if (!confirm(`¿Mandar la orden ${numOrden(o)} a la papelera? Se puede recuperar desde Configuración.`)) return;
+  o.borrada = ahora();
+  o.historial.push({ f: ahora(), t: 'Enviada a la papelera', n: true });
+  if (await DB.upsert(o)) { abierta = null; refresh(); drawPapelera(); }
+}
+async function recuperarOrden(o) {
+  o.borrada = '';
+  o.historial.push({ f: ahora(), t: 'Recuperada de la papelera', n: true });
+  if (await DB.upsert(o)) { refresh(); drawPapelera(); }
+}
+async function purgarOrden(o) {
+  if (!confirm(`¿Borrar PARA SIEMPRE la orden ${numOrden(o)} y sus fotos? No se puede deshacer.`)) return;
+  if (await DB.remove(o.id)) { refresh(); drawPapelera(); }
+}
+$('cPapelList').onclick = async e => {
+  const r = e.target.closest('[data-res]'), p = e.target.closest('[data-pur]');
+  if (r) return recuperarOrden(DB.data.ordenes.find(o => o.id === r.dataset.res));
+  if (p) return purgarOrden(DB.data.ordenes.find(o => o.id === p.dataset.pur));
+};
+$('bVaciar').onclick = async () => {
+  const L = DB.data.ordenes.filter(o => o.borrada);
+  if (!L.length || !confirm(`¿Borrar PARA SIEMPRE las ${L.length} órdenes de la papelera y sus fotos?`)) return;
+  if (!confirm('Última confirmación: esta vez no se puede recuperar.')) return;
+  for (const o of L) await DB.remove(o.id);
+  refresh(); drawPapelera();
+};
+$('bResp').onclick = async () => {
+  try {
+    const r = await fetch('/api/respaldo');
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'No se pudo armar el respaldo.');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(await r.blob()); a.download = `respaldo-${hoy()}.json`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+  } catch (e) { alert(e.message + '\n\nHace falta conexión con el servidor para respaldar: probá de nuevo más tarde.'); }
+};
 
 /* ============ PANEL DE ESTADÍSTICAS Y EXPORTAR ============ */
 const ym = iso => { const d = new Date(iso); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}`; };
@@ -632,7 +683,7 @@ function dona(items) {
 }
 
 function resumen() {
-  const r = rango(), L = DB.data.ordenes;
+  const r = rango(), L = DB.ordenes;
   const ing = L.filter(o => enRango(o.creada, r));
   const ent = L.filter(o => o.entrega_fecha && enRango(o.entrega_fecha, r));
   const fact = ent.reduce((a, o) => a + num(o.monto), 0), cost = ent.reduce((a, o) => a + costoRep(o), 0);
@@ -678,8 +729,8 @@ function resumen() {
 }
 $('rPer').onchange = () => { $('rMesW').style.display = $('rPer').value === 'mes' ? '' : 'none'; resumen(); };
 $('rMes').onchange = resumen;
-$('rExcel').onclick = () => descargarCSV(DB.data.ordenes.filter(o => enRango(o.creada, rango())), 'estadisticas-' + hoy() + '.csv');
-$('bCsv').onclick = () => descargarCSV(DB.data.ordenes, 'ordenes-' + hoy() + '.csv');
+$('rExcel').onclick = () => descargarCSV(DB.ordenes.filter(o => enRango(o.creada, rango())), 'estadisticas-' + hoy() + '.csv');
+$('bCsv').onclick = () => descargarCSV(DB.ordenes, 'ordenes-' + hoy() + '.csv');
 /* Vuelve a dibujar la lista y las estadísticas (después de crear, editar, borrar o cambiar config) */
 function refresh() { render(); resumen(); }
 

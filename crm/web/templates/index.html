@@ -192,6 +192,11 @@
     <textarea id="cEquipos" style="min-height:110px"></textarea>
     <div id="cEquRen" class="ren"></div>
   </fieldset>
+  <fieldset id="cPapel"><legend>Papelera y respaldo (solo administrador)</legend>
+    <label>Las órdenes que se borran quedan acá: se pueden recuperar o borrar para siempre.</label>
+    <div id="cPapelList"></div>
+    <div class="acts"><button type="button" id="bResp">💾 Descargar respaldo</button><button type="button" class="dg" id="bVaciar">🗑️ Vaciar papelera</button></div>
+  </fieldset>
   <fieldset><legend>Mensajes de WhatsApp</legend>
     <label>General — {cliente} {numero} {equipo} {estado} {taller}</label><textarea id="cMsg" style="min-height:70px"></textarea>
     <label>Presupuesto — además {diagnostico} {presupuesto}</label><textarea id="cMsgP" style="min-height:100px"></textarea>

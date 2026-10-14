@@ -1,7 +1,7 @@
 /* Service worker del CRM: deja la app instalable y abre rápido.
    Solo guarda la "carcasa" (HTML, CSS, JS, íconos). Los datos (/api) y las fotos (/media) siempre van a la red,
    así nunca se muestran datos viejos ni se guardan datos de clientes en el caché del dispositivo. */
-const CACHE = 'crm-shell-v8';
+const CACHE = 'crm-shell-v9';
 const SHELL = ['/', '/login', '/manifest.webmanifest', '/static/css/styles.css', '/static/js/app.js', '/static/js/db.js', '/static/js/login.js',
                '/static/img/icon-192.png', '/static/img/icon-512.png', '/static/img/favicon.png'];
 

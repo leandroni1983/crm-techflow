@@ -24,7 +24,7 @@ class DbTest(unittest.TestCase):
         st = SqliteStore(p); st.migrate(); o = st.orders_all()[0]
         self.assertEqual((o["cliente"], o["seq"], o["checklist"]), ("Viejo", 7, []))
         self.assertEqual(o["falla_tipo"], "")  # las columnas nuevas se agregan vacías
-        self.assertEqual(o["equipo_tipo"], "")
+        self.assertEqual((o["equipo_tipo"], o["borrada"]), ("", ""))
         self.assertEqual(st.next_seq(1), [8])  # la secuencia continúa después del mayor número
 
     def test_tipo_de_falla_se_guarda_y_vuelve(self):
@@ -44,6 +44,15 @@ class DbTest(unittest.TestCase):
         self.assertEqual(por["a"]["equipo_tipo"], "Notebook / portátil")
         self.assertEqual(st.config_all()["fallas"], "No arranca\nOtro")
         with self.assertRaises(ValueError): st.categoria_renombrar("fallas", "cliente; DROP TABLE ordenes", "x", "y", "z")
+
+    def test_papelera_se_guarda_y_vuelve(self):
+        st = SqliteStore(os.path.join(self.tmp, "pap.db")); st.migrate()
+        st.order_save(norm_order(order("a")), [])
+        borrada = {**norm_order(order("a")), "borrada": "2026-10-14T10:00:00Z"}
+        st.order_save(borrada, [])
+        self.assertEqual(st.orders_all()[0]["borrada"], "2026-10-14T10:00:00Z")
+        st.order_save(norm_order(order("a")), [])            # recuperada
+        self.assertEqual(st.orders_all()[0]["borrada"], "")
 
     def test_base_mas_nueva_que_el_programa_no_arranca(self):
         p = os.path.join(self.tmp, "f.db"); st = SqliteStore(p); st.migrate()

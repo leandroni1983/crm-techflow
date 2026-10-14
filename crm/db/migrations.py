@@ -36,6 +36,13 @@ def m4_equipo_tipo(t):
     if "equipo_tipo" not in _cols(t, "ordenes"): t.run("ALTER TABLE ordenes ADD COLUMN equipo_tipo TEXT")
 
 
+def m5_papelera(t):
+    """Papelera: `borrada` guarda cuándo la orden se mandó a la papelera (vacío = orden activa).
+    Borrar de verdad (DELETE y borrado de fotos) queda solo para purgar desde la papelera."""
+    if "borrada" not in _cols(t, "ordenes"): t.run("ALTER TABLE ordenes ADD COLUMN borrada TEXT")
+
+
 MIGRATIONS = [(1, "esquema base", m1_esquema), (2, "secuencia de números de orden", m2_secuencia),
-              (3, "tipo de falla", m3_falla_tipo), (4, "tipo de equipo", m4_equipo_tipo)]
+              (3, "tipo de falla", m3_falla_tipo), (4, "tipo de equipo", m4_equipo_tipo),
+              (5, "papelera", m5_papelera)]
 LATEST = MIGRATIONS[-1][0]

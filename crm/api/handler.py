@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
 from .. import __version__
+from ..backup import dump as backup_dump
 from ..db import DBUnavailable
 from ..log import log
 from ..orders import delete_order, save_order
@@ -164,6 +165,13 @@ def make_handler(app):
                 cfg = svc.config(); cfg.pop("pin", None)
                 return self._send(200, {"ordenes": svc.orders(), "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
             if p == "/api/estado": return self._send(200, svc.status())
+            if p == "/api/respaldo":
+                # Respaldo completo de la base en un archivo JSON (solo el administrador).
+                if user["rol"] != "admin": return self._send(403, {"error": "Solo el administrador"})
+                if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Esperá un momento."})
+                body = json.dumps(backup_dump(app.store), ensure_ascii=False, indent=1).encode()
+                return self._send(200, body, "application/json; charset=utf-8",
+                                  {"Content-Disposition": 'attachment; filename="respaldo-%s.json"' % time.strftime("%Y%m%d")})
             if p == "/api/qr":
                 if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Esperá un momento."})
                 try:
@@ -246,6 +254,7 @@ def make_handler(app):
             user = self._user()
             if not user: return self._send(401, {"error": "login"})
             if self.path.startswith("/api/orden/"):
+                if user["rol"] != "admin": return self._send(403, {"error": "Para borrar de verdad hace falta ser administrador (los demás pueden mandarla a la papelera)."})
                 delete_order(app, self.path.rsplit("/", 1)[1])
                 return self._send(200, {"ok": True})
             if self.path.startswith("/api/usuarios/"):

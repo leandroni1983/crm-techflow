@@ -164,6 +164,25 @@ const ok = (c, m) => console.log((c ? 'OK   ' : 'FALLA') + ' ' + m);
   await page.selectOption('#fT', '@yo'); ok(await page.locator('.ord').count() === 2, '"Mis órdenes" muestra las órdenes asignadas a admin');
   await page.selectOption('#fT', 'tecnico1'); ok(await page.locator('.ord').count() === 0, 'filtrar por otro técnico no muestra esa orden');
   await page.selectOption('#fT', '');
+  // --- papelera (borrado recuperable) y respaldo
+  await page.click('#bCfg'); await page.waitForSelector('#cPapelList');
+  ok((await page.textContent('#cPapelList')).includes('Vacía'), 'la papelera arranca vacía');
+  const resp = await page.evaluate(async () => { const r = await fetch('/api/respaldo'); const d = await r.json(); return { code: r.status, n: d.ordenes.length, u: d.usuarios.length }; });
+  ok(resp.code === 200 && resp.n === 2 && resp.u >= 1, 'el respaldo baja un archivo con las órdenes y los usuarios');
+  await page.click('#cCan'); await page.waitForTimeout(200);
+  const nOrd = await page.locator('.ord').count();
+  await page.locator('.ord').first().locator('.ord-line').click();
+  await page.locator('.ord').first().locator('[data-a="del"]').click();
+  await page.waitForFunction(n => document.querySelectorAll('.ord').length === n - 1, nOrd, { timeout: 8000 });
+  ok(true, 'borrar una orden la saca de la lista');
+  const borradas = (await (await page.request.get(BASE + '/api/data')).json()).ordenes.filter(o => o.borrada);
+  ok(borradas.length === 1, 'la orden borrada sigue en la base, marcada como papelera');
+  await page.click('#bCfg'); await page.waitForSelector('#cPapelList [data-res]');
+  ok((await page.textContent('#cPapelList')).includes('Recuperar'), 'la papelera ofrece recuperar la orden borrada');
+  await page.click('#cPapelList [data-res]');
+  await page.waitForFunction(n => document.querySelectorAll('.ord').length === n, nOrd, { timeout: 8000 });
+  ok((await page.textContent('#cPapelList')).includes('Vacía'), 'recuperarla la devuelve a la lista y deja la papelera vacía');
+  await page.click('#cCan'); await page.waitForTimeout(200);
   // --- PWA
   const man = await (await page.request.get(BASE + '/manifest.webmanifest')).json();
   const sizes = man.icons.map(i => i.sizes);

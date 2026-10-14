@@ -21,7 +21,7 @@ const DEFAULTS = {
 const ordenVacia = () => ({
   cliente: '', tel: '', direccion: '', equipo: '', equipo_tipo: '', marca: '', color: '', serie: '', accesorios: '', fisico: '', deteriorado: '',
   clave: '', falla_tipo: '', problema: '', diagnostico: '', monto: '', autoriza: '', sena: '', pagado: '', estado: 'Recibido', estado_fecha: '',
-  hora: '', entrega_est: '', entrega_fecha: '', garantia_fab: '', observ: '', firma: '', firma_entrega: '', tecnico: '',
+  hora: '', entrega_est: '', entrega_fecha: '', garantia_fab: '', observ: '', firma: '', firma_entrega: '', tecnico: '', borrada: '',
   checklist: [], repuestos: [], historial: [], imagenes: []
 });
 const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['checklist', 'repuestos', 'historial', 'imagenes']) if (!Array.isArray(b[k])) b[k] = []; return b; };
@@ -29,6 +29,8 @@ const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['check
 const DB = {
   K: 'crm-tecnico-v1', api: false, usuario: null, tecnicos: [], sync: null,
   data: { ordenes: [], config: { ...DEFAULTS }, seq: 0 },
+  /* Órdenes activas: las de la papelera (borrada con fecha) no se muestran ni se cuentan en ningún lado. */
+  get ordenes() { return this.data.ordenes.filter(o => !o.borrada); },
   /* La sesión viaja en una cookie HttpOnly; si el servidor responde 401 volvemos al login. */
   async req(path, opt = {}) {
     const r = await fetch(path, { ...opt, headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' });

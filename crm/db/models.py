@@ -3,7 +3,7 @@ import json, time
 
 TEXT_COLS = ["cliente", "tel", "direccion", "equipo", "equipo_tipo", "marca", "color", "serie", "accesorios", "fisico", "deteriorado",
              "clave", "falla_tipo", "problema", "diagnostico", "monto", "autoriza", "sena", "pagado", "estado", "estado_fecha", "hora",
-             "entrega_est", "entrega_fecha", "garantia_fab", "observ", "firma", "firma_entrega", "tecnico"]
+             "entrega_est", "entrega_fecha", "garantia_fab", "observ", "firma", "firma_entrega", "tecnico", "borrada"]
 JSON_COLS = ["checklist", "repuestos", "historial", "imagenes"]
 ORDER_COLS = ["id", "seq"] + TEXT_COLS + JSON_COLS + ["creada", "actualizada"]
 

@@ -127,6 +127,34 @@ class ApiTest(unittest.TestCase):
         self.assertEqual((code, h["Content-Type"], pdf[:4]), (200, "application/pdf", b"%PDF"))
         import os; self.assertTrue(os.path.exists(self.env.path("comprobantes", "0001010126-entrega.pdf")))
 
+    # ---- papelera y respaldo
+    def test_papelera_y_respaldo(self):
+        a = self.env.client(); a.login()
+        o = {"id": "pap1", "cliente": "Pablo", "tel": "1155550000"}
+        self.assertEqual(a.post("/api/orden", o)[0], 200)
+        # mandar a la papelera: la orden sigue en la base, marcada con la fecha
+        self.assertEqual(a.post("/api/orden", {**o, "borrada": "2026-10-14T10:00:00Z"})[0], 200)
+        pap = [x for x in a.get("/api/data")[1]["ordenes"] if x["id"] == "pap1"][0]
+        self.assertEqual(pap["borrada"], "2026-10-14T10:00:00Z")
+        # recuperarla deja la orden como estaba
+        self.assertEqual(a.post("/api/orden", {**o, "borrada": ""})[0], 200)
+        self.assertEqual([x for x in a.get("/api/data")[1]["ordenes"] if x["id"] == "pap1"][0]["borrada"], "")
+        # el respaldo (solo administrador) trae configuración, usuarios y órdenes, papelera incluida
+        a.post("/api/orden", {**o, "borrada": "2026-10-14T11:00:00Z"})
+        code, d, h = a.get("/api/respaldo")
+        self.assertEqual(code, 200)
+        self.assertIn("attachment; filename=\"respaldo-", h["Content-Disposition"])
+        self.assertEqual([x["id"] for x in d["ordenes"]], ["pap1"]); self.assertIn("admin", [u["nombre"] for u in d["usuarios"]])
+        self.assertTrue(d["fecha"] and d["app"] == "crm-tecnico" and isinstance(d["config"], dict))
+        # borrar de verdad (DELETE) es solo del administrador: los técnicos usan la papelera
+        a.post("/api/usuarios", {"nombre": "tec-pap", "password": "clave-tec-1234", "rol": "tecnico"})
+        t = self.env.client(); t.login("tec-pap", "clave-tec-1234")
+        self.assertEqual(t.delete("/api/orden/pap1")[0], 403)
+        self.assertEqual(t.get("/api/respaldo")[0], 403)
+        self.assertEqual(a.delete("/api/orden/pap1")[0], 200)
+        self.assertNotIn("pap1", [x["id"] for x in a.get("/api/data")[1]["ordenes"]])
+        a.delete("/api/usuarios/tec-pap")
+
     # ---- usuarios y roles
     def test_roles_y_gestion_de_usuarios(self):
         a = self.env.client(); a.login()

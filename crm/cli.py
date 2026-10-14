@@ -1,5 +1,5 @@
-"""Línea de comandos:  python -m crm [serve|check-db|list-users|reset-password|migrate-sqlite|version]"""
-import argparse, os, sys
+"""Línea de comandos:  python -m crm [serve|check-db|list-users|reset-password|backup|restore|migrate-sqlite|version]"""
+import argparse, os, sys, time
 
 from . import __version__
 from .app import App
@@ -43,6 +43,23 @@ def cmd_reset_password(settings, usuario, clave):
     return 0
 
 
+def cmd_backup(settings, destino):
+    from .backup import save
+    destino = destino or os.path.join(settings.data_dir, "respaldo-" + time.strftime("%Y%m%d-%H%M") + ".json")
+    n = save(_open_migrated(settings), destino)
+    print(f"✔ Respaldo escrito en {destino} ({n} órdenes, con configuración y usuarios).\n"
+          f"ℹ Las fotos y firmas están en {settings.media_dir}: copiá esa carpeta aparte para un respaldo completo.")
+    return 0
+
+
+def cmd_restore(settings, origen):
+    from .backup import load
+    try: n = load(_open_migrated(settings), origen)
+    except (OSError, ValueError) as e: print(f"✖ No se pudo restaurar: {e}"); return 1
+    print(f"✔ Restaurado: {n} órdenes (no se borró nada de lo que ya estaba en la base).\nℹ Reiniciá el CRM para que los cambios se vean en pantalla.")
+    return 0
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="python -m crm", description="CRM técnico. Sin subcomando arranca el servidor.")
     sub = p.add_subparsers(dest="cmd")
@@ -52,6 +69,8 @@ def build_parser():
     r = sub.add_parser("reset-password", help="cambia la contraseña de un usuario (o lo crea como administrador)")
     r.add_argument("usuario"); r.add_argument("clave")
     m = sub.add_parser("migrate-sqlite", help="pasa un crm.db viejo a la base de DATABASE_URL (una sola vez)"); m.add_argument("origen")
+    b = sub.add_parser("backup", help="guarda un respaldo de la base en un archivo JSON"); b.add_argument("destino", nargs="?", help="archivo de salida (por defecto: data/respaldo-FECHA.json)")
+    rs = sub.add_parser("restore", help="restaura un respaldo hecho con 'backup' (no borra nada)"); rs.add_argument("origen")
     sub.add_parser("version", help="muestra la versión")
     return p
 
@@ -69,6 +88,8 @@ def main(argv=None):
     if args.cmd == "check-db": return cmd_check_db(settings)
     if args.cmd == "list-users": return cmd_list_users(settings)
     if args.cmd == "reset-password": return cmd_reset_password(settings, args.usuario, args.clave)
+    if args.cmd == "backup": return cmd_backup(settings, args.destino)
+    if args.cmd == "restore": return cmd_restore(settings, args.origen)
     if args.cmd == "migrate-sqlite":
         from .migrate import run
         return run(settings, args.origen)
