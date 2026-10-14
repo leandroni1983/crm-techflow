@@ -1,5 +1,17 @@
 # Cambios
 
+## 1.4.0
+- **Papelera recuperable**: borrar una orden ya no la pierde; la manda a la papelera desde donde el administrador puede **recuperarla** o **borrarla para siempre** (con sus fotos). El borrado definitivo, la papelera y el respaldo son solo del administrador. Migración de esquema v5: columna `borrada`.
+- **Respaldo descargable** desde **⚙️ Configuración → Respaldo** (JSON con configuración, usuarios y órdenes, papelera incluida) y también por consola: `python -m crm backup` y `python -m crm restore archivo.json`.
+- **Portal de seguimiento para el cliente**: cada orden tiene un **link privado firmado** (HMAC) que se abre **sin usuario ni contraseña** y muestra el estado, las fechas, el saldo y la línea de tiempo (nunca las notas internas ni la clave del equipo). El botón **🔗 Seguimiento** copia el link para pegar en WhatsApp y la variable `{seguimiento}` está disponible en los mensajes. La dirección pública se configura desde ⚙️.
+- **Aviso de equipos sin retirar**: botón **📦 Sin retirar** con la lista de equipos listos esperando retiro, los días que llevan y aviso por WhatsApp (queda anotado en el historial).
+- **Inventario de repuestos**: catálogo (nombre, stock, mínimo y costo) que edita el administrador; la **disponibilidad se calcula** restando lo usado en las órdenes activas, así nunca queda desfasada, y avisa cuando hay que **reponer**. Al cargar una orden se elige el repuesto del inventario y completa descripción, cantidad y costo.
+- **Datos prolijos**: nuevo campo **Tipo de equipo** con lista fija (y sugerencia automática al escribir el equipo) y **renombre de categorías** de fallas/equipos que actualiza también las órdenes viejas. La estadística "Equipos más frecuentes" ahora usa el tipo, no el texto libre. Migración v4: columna `equipo_tipo`.
+- **Seguridad**: cabeceras `Content-Security-Policy` estricta y `Permissions-Policy`; validación de **Origin** (contra CSRF); **límite de tasa** por IP en las rutas sensibles; cookie **`__Host-crm_sid`** bajo HTTPS; aviso cuando la contraseña del administrador es débil.
+- **Rendimiento y arquitectura**: el panel pide los **agregados ya calculados** al servidor (`/api/resumen`) y, sin conexión, los calcula local con las mismas reglas; `/api/data` y `/api/resumen` usan **ETag** (304 sin cuerpo); la lista se dibuja **de a 50** con botón "ver más"; `app.js` se dividió en **módulos ES** (`util`, `db`, `comun`, `cat`, `orden`, `lista`, `config`, `panel`, `modo`, `app`) sin empaquetador ni CDN.
+- **Automatización**: **GitHub Actions** (lint `ruff` + pruebas en 3.10/3.12 + e2e con Playwright), comandos `make lint/test/e2e`, y **healthcheck** del contenedor Docker.
+- Pruebas: **49** unitarias/API y **85** comprobaciones de navegador.
+
 ## 1.3.0
 - El **panel de estadísticas (dashboard)** pasa a ser la pantalla principal al iniciar sesión: indicadores del período (ingresadas, entregadas, facturado, costo de repuestos, ganancia, ticket promedio, sin retirar) y gráficos sin librerías externas (evolución mensual, facturado vs. ganancia, distribución por estado, por técnico, equipos y fallas más comunes).
 - Desde el panel se puede **crear una orden nueva** y, justo debajo, la sección **Órdenes** muestra **todas** las órdenes con búsqueda por palabra y filtro por estado/técnico.

@@ -20,6 +20,9 @@ de configuración, por eso las pruebas pueden levantar una aplicación completa 
 | `api/handler.py` | Interpreta el pedido HTTP, valida la sesión, responde. Sin reglas de negocio. |
 | `orders.py` | Reglas de una orden: fotos a archivos, historial sellado por el servidor, número decidido por el servidor. |
 | `service.py` | `DataService`: lee/escribe en la base; sin conexión usa la cola y la copia en memoria; sincroniza al volver. |
+| `resumen.py` | Agregados del panel de estadísticas (mismas cuentas que el cálculo local del navegador). |
+| `seg.py` | Token firmado (HMAC) por orden para el portal de seguimiento del cliente. |
+| `backup.py` | Respaldo y restauración: configuración + usuarios + órdenes en un JSON. |
 | `db/models.py` | Columnas de la orden y su normalización. |
 | `db/migrations.py` | Migraciones numeradas. |
 | `db/store.py` | `SqliteStore` y `PgStore`: el mismo SQL, con las diferencias aisladas. |
@@ -35,6 +38,8 @@ de configuración, por eso las pruebas pueden levantar una aplicación completa 
 - **Historial a prueba de falsificación:** el cliente solo puede agregar entradas; fecha y usuario los pone el servidor.
 - **Una sola dependencia externa:** el driver `psycopg`. PDF, QR y servidor HTTP están hechos con la biblioteca estándar.
 - **Sesiones con cookie `HttpOnly`**; los tokens se guardan hasheados. `Secure` solo cuando la conexión llegó por HTTPS.
+- **Front-end en módulos ES**, sin empaquetador ni CDN: `util` (helpers), `db` (capa de datos), `comun` (dominio compartido e inventario), `cat` (tipos de falla/equipo), `orden` (formulario, comprobantes, papelera), `lista` (lista, filtros y paginación), `config`, `panel` (dashboard y CSV), `modo` (estado y modo local) y `app` (arranque y PWA). Los módulos avisan "cambió algo" por un enganche (`setRefresco`) para no importarse en círculo.
+- **El panel se calcula en dos lados con las mismas reglas**: con conexión y todo sincronizado lo pide al servidor (`/api/resumen`); si no, lo calcula en el navegador. `/api/data` y `/api/resumen` usan ETag y responden 304 cuando nada cambió.
 
 ## Funcionamiento sin conexión con la base
 
@@ -52,8 +57,8 @@ Límites: sin conexión no se pueden crear usuarios ni cambiar contraseñas; si 
 **Agregar un campo a la orden**
 1. Sumarlo a `TEXT_COLS` en `crm/db/models.py` (o a `JSON_COLS` si es una lista).
 2. Crear una migración nueva en `crm/db/migrations.py` (`m3_...`) que haga `ALTER TABLE ordenes ADD COLUMN ...` y agregarla a `MIGRATIONS`. **No edites migraciones viejas.**
-3. Agregarlo al formulario en `crm/web/templates/index.html` y al mapa `CAMPOS` de `crm/web/static/js/app.js`.
-4. Si debe salir en los comprobantes, sumarlo a `filasComp` o `filasEntrega` en `app.js`.
+3. Agregarlo al formulario en `crm/web/templates/index.html` y al mapa `CAMPOS` de `crm/web/static/js/orden.js`.
+4. Si debe salir en los comprobantes, sumarlo a `filasComp` o `filasEntrega` en `orden.js`; si va al CSV, a `COLS` en `panel.js`.
 5. Una prueba en `tests/` y `make test`.
 
 **Agregar un endpoint:** una rama en `_get`/`_post`/`_delete` de `api/handler.py` que llame a un caso de uso (en `orders.py` o un módulo nuevo), nunca a la base directamente.
