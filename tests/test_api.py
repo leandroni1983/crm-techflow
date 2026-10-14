@@ -28,10 +28,12 @@ class ApiTest(unittest.TestCase):
         c = self.c
         code, body, _ = c.login(password="mala"); self.assertEqual(code, 401)
         code, _, h = c.login(); self.assertEqual(code, 200)
+        self.assertIn("crm_sid=", h["Set-Cookie"])                                              # por http, sin prefijo
         self.assertIn("HttpOnly", h["Set-Cookie"]); self.assertIn("SameSite=Lax", h["Set-Cookie"]); self.assertNotIn("Secure", h["Set-Cookie"])
         self.assertEqual(c.get("/api/data")[0], 200)
         self.assertEqual(c.get("/static/js/app.js")[0], 200)
         c.post("/api/logout"); self.assertEqual(c.get("/api/data")[0], 401)
+        self.assertEqual(c.get("/static/js/app.js")[0], 401)
 
     def test_bloqueo_tras_intentos_fallidos_por_ip(self):
         with Env() as e:
@@ -42,8 +44,54 @@ class ApiTest(unittest.TestCase):
     def test_cookie_secure_solo_si_llego_por_https(self):
         with Env(cookie_secure=True) as e:
             _, _, h = e.client().login(); self.assertNotIn("Secure", h["Set-Cookie"])           # http de la red local
+            self.assertIn("crm_sid=", h["Set-Cookie"])
             _, _, h = e.client().post("/api/login", {"usuario": "admin", "password": "Secreta123"}, headers={"X-Forwarded-Proto": "https"})
             self.assertIn("Secure", h["Set-Cookie"])                                            # vía Cloudflare/proxy
+            self.assertIn("__Host-crm_sid=", h["Set-Cookie"])                                   # con https, cookie reforzada
+            self.assertEqual(h["Strict-Transport-Security"], "max-age=31536000")
+
+    def test_cabeceras_de_seguridad(self):
+        c = self.c; c.login()
+        code, _, h = c.get("/")
+        self.assertEqual(code, 200)
+        self.assertIn("script-src 'self'", h["Content-Security-Policy"])                        # nada de JS de terceros
+        self.assertIn("frame-ancestors 'none'", h["Content-Security-Policy"])
+        self.assertIn("object-src 'none'", h["Content-Security-Policy"])
+        self.assertEqual(h["X-Frame-Options"], "DENY")
+        self.assertEqual(h["X-Content-Type-Options"], "nosniff")
+        self.assertIn("geolocation=()", h["Permissions-Policy"])
+        self.assertNotIn("Strict-Transport-Security", h)                                        # HSTS solo por https
+
+    def test_pedido_de_otro_sitio_se_rechaza(self):
+        c = self.c; c.login()
+        self.assertEqual(c.post("/api/config", {"taller": "X"}, headers={"Origin": "https://malo.example"})[0], 403)
+        self.assertEqual(c.delete("/api/orden/loquesea", headers={"Origin": "https://malo.example"})[0], 403)
+        self.assertEqual(c.post("/api/config", {"taller": "Taller propio"}, headers={"Origin": self.env.url})[0], 200)
+        self.assertEqual(c.get("/api/data")[1]["config"]["taller"], "Taller propio")
+
+    def test_limite_en_los_endpoints_pesados(self):
+        with Env() as e:
+            c = e.client(); c.login()
+            codes = [c.get("/api/qr?t=x")[0] for _ in range(125)]     # el límite es 120 por minuto
+            self.assertEqual(set(codes[:120]), {200}); self.assertEqual(set(codes[120:]), {429})
+
+    def test_los_estaticos_se_revalidan_con_etag(self):
+        c = self.c; c.login()
+        code, _, h = c.get("/static/css/styles.css")
+        self.assertEqual((code, h["Content-Type"]), (200, "text/css; charset=utf-8"))
+        self.assertIn("no-cache", h["Cache-Control"]); self.assertTrue(h["ETag"].startswith('W/"'))
+        self.assertEqual(c.get("/static/css/styles.css", headers={"If-None-Match": h["ETag"]})[0], 304)   # no se baja de nuevo
+
+    def test_avisa_si_la_clave_de_arranque_es_debil(self):
+        import contextlib, io
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with Env(admin_password="cambiame"): pass
+        self.assertIn("ADMIN_PASSWORD es corta", buf.getvalue())
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with Env(admin_password="UnaClaveLargaYSegura"): pass
+        self.assertNotIn("ADMIN_PASSWORD es corta", buf.getvalue())
 
     def test_ip_real_con_cloudflare_no_se_puede_falsear(self):
         with Env(trust_proxy=True) as e:

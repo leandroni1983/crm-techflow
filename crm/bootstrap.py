@@ -4,6 +4,9 @@ import json, os, secrets
 from .log import log
 from .security import hash_pw
 
+# Claves de ejemplo que no deberían quedar en producción (ADMIN_PASSWORD se usa solo al crear el primer usuario).
+CLAVES_DEBILES = {"cambiame-por-algo-largo", "cambiame", "admin", "admin123", "12345678", "password", "crm", "crmtecnico", "test"}
+
 
 def ensure_admin(app):
     """Si todavía no hay usuarios crea el administrador (con ADMIN_USER/ADMIN_PASSWORD, o con una clave generada)."""
@@ -11,7 +14,11 @@ def ensure_admin(app):
     if svc.users_count(): return
     pw = st.admin_password or secrets.token_urlsafe(9)
     svc.user_add(st.admin_user, hash_pw(pw), "admin")
-    if st.admin_password: log(f"Usuario administrador creado: {st.admin_user} (contraseña tomada de ADMIN_PASSWORD)")
+    if st.admin_password:
+        log(f"Usuario administrador creado: {st.admin_user} (contraseña tomada de ADMIN_PASSWORD)")
+        if st.admin_password.strip().lower() in CLAVES_DEBILES or len(st.admin_password.strip()) < 12:
+            log("ATENCIÓN: ADMIN_PASSWORD es corta o es una clave de ejemplo. Cambiala ya desde ⚙️ > Mi cuenta: "
+                "mientras siga así, quien llegue a la pantalla de ingreso puede probarla sin límite.")
     else: print("=" * 60 + f"\n  PRIMER INGRESO  ->  usuario: {st.admin_user}   contraseña: {pw}\n  (guardala y cambiala desde ⚙️ > Mi cuenta)\n" + "=" * 60, flush=True)
 
 

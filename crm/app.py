@@ -5,7 +5,7 @@ from .bootstrap import ensure_admin, migrate_legacy_media
 from .config import Settings
 from .db import open_store
 from .media import MediaStore
-from .security import LoginLimiter
+from .security import LoginLimiter, RateLimiter
 from .service import DataService
 
 
@@ -17,6 +17,7 @@ class App:
         self.media = MediaStore(settings.media_dir)
         self.service = DataService(self.store, settings.data_dir, settings.database_url, probe_secs=settings.sync_secs)
         self.limiter = LoginLimiter()
+        self.rate = RateLimiter()   # endpoints pesados: QR y comprobantes
 
     def start(self):
         """Conecta con la base, migra el esquema, asegura el administrador y carga la copia en memoria."""

@@ -34,3 +34,27 @@ class LoginLimiter:
 
     def ok(self, ip):
         with self._lock: self._d.pop(ip, None)
+
+
+class RateLimiter:
+    """Limita cuántos pedidos puede hacer una misma IP en una ventana de tiempo.
+
+    Se usa en los endpoints pesados (generar QR, armar PDFs, respaldos), donde un usuario apurado
+    puede pedir unos cuantos por minuto pero un abuso llenaría el disco o la CPU.
+    """
+
+    def __init__(self, max_hits=120, window_secs=60):
+        self.max_hits, self.window_secs = max_hits, window_secs
+        self._d, self._lock = {}, threading.Lock()
+
+    def allow(self, ip):
+        ahora = time.time()
+        with self._lock:
+            hits = [t for t in self._d.get(ip, []) if t > ahora - self.window_secs]
+            if len(hits) >= self.max_hits:
+                self._d[ip] = hits
+                return False
+            hits.append(ahora); self._d[ip] = hits
+            if len(self._d) > 2000:  # higiene: la tabla no crece sin límite con IPs variadas
+                self._d = {k: v for k, v in self._d.items() if v and v[-1] > ahora - self.window_secs}
+            return True

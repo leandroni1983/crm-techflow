@@ -21,27 +21,49 @@ TYPES = {".css": "text/css; charset=utf-8", ".js": "application/javascript; char
          ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml"}
 NAME_RE = re.compile(r"^[a-z0-9_.-]{3,30}$")
 
+# Cabeceras de seguridad: van en TODAS las respuestas.
+# El CSP es estricto porque la app no usa nada externo (ni CDN ni fuentes remotas) y todo el JS va en archivos propios.
+# 'unsafe-inline' solo para estilos: las hojas de impresión se arman en el momento y las plantillas usan style="...".
+CSP = ("default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+       "connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; "
+       "base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+SEC_HEADERS = {"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin",
+               "Content-Security-Policy": CSP, "Permissions-Policy": "camera=(), microphone=(), geolocation=(), usb=(), payment=()"}
+
 
 def make_handler(app):
-    st, svc, media, limiter = app.settings, app.service, app.media, app.limiter
+    st, svc, media, limiter, rate = app.settings, app.service, app.media, app.limiter, app.rate
 
     class Handler(BaseHTTPRequestHandler):
         # ---------------- utilidades de respuesta
         def _send(self, code, body, ctype="application/json", headers=None):
             if not isinstance(body, bytes): body = json.dumps(body).encode()
             self.send_response(code)
-            h = {"Content-Type": ctype, "Content-Length": str(len(body)), "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff",
-                 "X-Frame-Options": "DENY", "Referrer-Policy": "same-origin"}
-            h.update(headers or {})
+            h = {"Content-Type": ctype, "Content-Length": str(len(body)), "Cache-Control": "no-store", **SEC_HEADERS}
+            if self._https(): h["Strict-Transport-Security"] = "max-age=31536000"   # solo tiene sentido (y solo se aplica) por https
+            extra = []
+            if isinstance(headers, dict): h.update(headers)
+            else: extra = list(headers or [])      # lista de pares: para poder mandar dos Set-Cookie
             for k, v in h.items(): self.send_header(k, v)
+            for k, v in extra: self.send_header(k, v)
             self.end_headers()
             self.wfile.write(body)
 
         def _redirect(self, to):
             self.send_response(302); self.send_header("Location", to); self.send_header("Content-Length", "0"); self.end_headers()
 
-        def _file(self, path):
-            with open(path, "rb") as f: return self._send(200, f.read(), TYPES.get(os.path.splitext(path)[1], "application/octet-stream"))
+        def _file(self, path, cache="no-store"):
+            """Entrega un archivo. Con cache="no-cache" manda ETag y responde 304 si no cambió (ahorra bajar CSS/JS en cada visita)."""
+            try: stt = os.stat(path)
+            except OSError: return self._send(404, {"error": "not found"})
+            etag = 'W/"%d-%d"' % (int(stt.st_mtime), stt.st_size)
+            if cache != "no-store" and self.headers.get("If-None-Match") == etag:
+                self.send_response(304)
+                for k, v in {"ETag": etag, "Cache-Control": cache}.items(): self.send_header(k, v)
+                self.end_headers(); return
+            with open(path, "rb") as f: data = f.read()
+            return self._send(200, data, TYPES.get(os.path.splitext(path)[1], "application/octet-stream"),
+                              {"ETag": etag, "Cache-Control": cache})
 
         def _json(self):
             n = int(self.headers.get("Content-Length", 0))
@@ -50,8 +72,11 @@ def make_handler(app):
 
         # ---------------- sesión
         def _token(self):
-            m = SimpleCookie(self.headers.get("Cookie", "")).get("crm_sid")
-            return m.value if m else ""
+            ck = SimpleCookie(self.headers.get("Cookie", ""))
+            for n in ("__Host-crm_sid", "crm_sid"):     # __Host- cuando hay https; crm_sid en http de la red local
+                m = ck.get(n)
+                if m and m.value: return m.value
+            return ""
 
         def _user(self):
             t = self._token()
@@ -67,9 +92,24 @@ def make_handler(app):
             return (self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower() == "https"
                     or "https" in self.headers.get("CF-Visitor", "").lower())
 
+        def _origen_ok(self):
+            """Frena pedidos que un navegador manda desde otro sitio (CSRF). Los clientes que no son navegadores no mandan Origin."""
+            o = self.headers.get("Origin")
+            if not o: return True
+            try: u = urlparse(o)
+            except Exception: return False
+            return bool(u.netloc) and u.netloc == (self.headers.get("Host") or "")
+
         def _cookie(self, token, max_age):
+            """Devuelve la cabecera Set-Cookie. Con https usa el prefijo __Host- (no se puede pisar desde un subdominio);
+            al cerrar sesión (token vacío) borra también el otro nombre, por si quedó de antes."""
             sec = "; Secure" if (st.cookie_secure and self._https()) else ""
-            return {"Set-Cookie": f"crm_sid={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}" + sec}
+            name = "__Host-crm_sid" if sec else "crm_sid"
+            out = [("Set-Cookie", f"{name}={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={max_age}{sec}")]
+            if not token:
+                other = "crm_sid" if name.startswith("__Host-") else "__Host-crm_sid"
+                out.append(("Set-Cookie", f"{other}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + ("; Secure" if other.startswith("__Host-") else "")))
+            return out
 
         def log_message(self, *a): pass
 
@@ -97,7 +137,7 @@ def make_handler(app):
             full = os.path.realpath(os.path.join(STATIC, *parts))
             if not full.startswith(STATIC + os.sep) or not os.path.isfile(full): return self._send(404, {"error": "not found"})
             if "/".join(parts) in PROTECTED_STATIC and not user: return self._send(401, {"error": "login"})
-            return self._file(full)
+            return self._file(full, cache="no-cache")
 
         # ---------------- GET
         def _get(self):
@@ -125,6 +165,7 @@ def make_handler(app):
                 return self._send(200, {"ordenes": svc.orders(), "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
             if p == "/api/estado": return self._send(200, svc.status())
             if p == "/api/qr":
+                if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Esperá un momento."})
                 try:
                     rows = qr_matrix(parse_qs(u.query).get("t", [""])[0])
                     return self._send(200, {"n": len(rows), "rows": rows})
@@ -138,6 +179,7 @@ def make_handler(app):
         # ---------------- POST
         def _post(self):
             p = self.path
+            if not self._origen_ok(): return self._send(403, {"error": "Origen no permitido"})
             try: d = self._json()
             except Exception: return self._send(400, {"error": "solicitud inválida"})
             if p == "/api/login": return self._login(d)
@@ -154,6 +196,7 @@ def make_handler(app):
                 svc.config_set({k: str(v) for k, v in d.items() if k != "pin"})
                 return self._send(200, {"ok": True})
             if p == "/api/comprobante":
+                if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Esperá un momento."})
                 pdf = pdf_comprobante(d, media)
                 os.makedirs(st.comprobantes_dir, exist_ok=True)
                 name = re.sub(r"[^\w-]", "", str(d.get("numero", "orden")) + str(d.get("sufijo", ""))) + ".pdf"
@@ -191,6 +234,7 @@ def make_handler(app):
 
         # ---------------- DELETE
         def _delete(self):
+            if not self._origen_ok(): return self._send(403, {"error": "Origen no permitido"})
             user = self._user()
             if not user: return self._send(401, {"error": "login"})
             if self.path.startswith("/api/orden/"):
