@@ -1,11 +1,11 @@
 services:
   crm:
     # La imagen se toma de Docker Hub (versión fija, nunca "latest"). `build` solo se usa en la PC donde armás la imagen.
-    image: leandrocode/crmtech:${CRM_VERSION:-1.2.0}
+    image: leandrocode/crmtech:${CRM_VERSION:-1.4.0}
     build:
       context: .
       args:
-        VERSION: ${CRM_VERSION:-1.2.0}
+        VERSION: ${CRM_VERSION:-1.4.0}
     container_name: crm-tecnico
     restart: unless-stopped
     ports:
