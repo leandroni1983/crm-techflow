@@ -23,7 +23,8 @@ $('bCfg').onclick = () => {
   $('cOcultarImp').checked = c.ocultar_importes === '1';
   $('cPermBorrar').checked = c.perm_borrar_admin === '1' || c.perm_borrar_admin === '' || c.perm_borrar_admin === undefined;
   tmpLogo = c.logo || ''; prevLogo();
-  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); drawRenombres(); drawPapelera(); if (esAdmin()) abrirInv(); $('dCfg').showModal();
+  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); drawRenombres(); drawPapelera();
+  if (esAdmin()) { abrirInv(); verAuditoria(); } $('dCfg').showModal();
 };
 $('cLogo').onchange = async e => { if (e.target.files[0]) { tmpLogo = await compress(e.target.files[0], 400, .85); prevLogo(); } };
 $('cLogoDel').onclick = () => { tmpLogo = ''; $('cLogo').value = ''; prevLogo(); };
@@ -54,6 +55,7 @@ async function cuentas() {
   $('cEqu').style.display = admin ? '' : 'none';
   $('cPapel').style.display = admin ? '' : 'none';
   $('cInv').style.display = admin ? '' : 'none';
+  $('cAud').style.display = admin ? '' : 'none';
   if (!admin) return;
   try {
     const L = await api('/api/usuarios', 'GET'); DB.tecnicos = L.map(x => x.nombre); drawTec();
@@ -72,6 +74,20 @@ $('cUsrList').onclick = async e => {
   const n = e.target.dataset.ud; if (!n || !confirm(`¿Borrar el usuario ${n}?`)) return;
   try { await api('/api/usuarios/' + encodeURIComponent(n), 'DELETE'); cuentas(); } catch (x) { alert(x.message); }
 };
+
+/* ---- auditoría global (solo administrador): quién hizo qué y cuándo ---- */
+async function verAuditoria() {
+  if (!esAdmin()) return;
+  $('cAudMsg').textContent = 'Cargando…';
+  try { const d = await api('/api/auditoria?limit=300', 'GET'); dibujarAud(d.movimientos || []); $('cAudMsg').textContent = ''; }
+  catch (e) { $('cAudList').innerHTML = ''; $('cAudMsg').textContent = e.message; }
+}
+function dibujarAud(L) {
+  $('cAudList').innerHTML = L.length
+    ? L.map(x => `<div class="kv"><span><span class="mut">${esc(x.fecha ? new Date(x.fecha).toLocaleString('es-AR') : '')}</span> · <b>${esc(x.usuario)}</b> · ${esc(x.accion)}${x.detalle ? ' <span class="mut">— ' + esc(x.detalle) + '</span>' : ''}</span></div>`).join('')
+    : '<div class="mut">Sin movimientos registrados todavía.</div>';
+}
+$('bAudVer').onclick = verAuditoria;
 
 /* ---- inventario: edición del catálogo (solo administrador) ---- */
 let catTmp = [], invDibujada = false;

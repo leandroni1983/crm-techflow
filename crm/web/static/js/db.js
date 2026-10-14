@@ -25,9 +25,9 @@ export const ordenVacia = () => ({
   clave: '', falla_tipo: '', problema: '', diagnostico: '', monto: '', autoriza: '', sena: '', pagado: '', estado: 'Recibido', estado_fecha: '',
   hora: '', entrega_est: '', entrega_fecha: '', garantia_fab: '', observ: '', firma: '', firma_entrega: '', tecnico: '', borrada: '',
   prioridad: 'Normal', presu_estado: '', presu_fecha: '', presu_motivo: '', presu_quien: '',
-  checklist: [], repuestos: [], historial: [], imagenes: [], pagos: []
+  checklist: [], repuestos: [], historial: [], imagenes: [], pagos: [], tareas: [], adjuntos: []
 });
-export const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['checklist', 'repuestos', 'historial', 'imagenes', 'pagos']) if (!Array.isArray(b[k])) b[k] = []; if (!b.prioridad) b.prioridad = 'Normal'; return b; };
+export const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['checklist', 'repuestos', 'historial', 'imagenes', 'pagos', 'tareas', 'adjuntos']) if (!Array.isArray(b[k])) b[k] = []; if (!b.prioridad) b.prioridad = 'Normal'; return b; };
 
 export const DB = {
   K: 'crm-tecnico-v1', api: false, usuario: null, tecnicos: [], sync: null,
@@ -85,10 +85,12 @@ export const DB = {
         if (d.imagenes) o.imagenes = d.imagenes;
         if (d.firma !== undefined) o.firma = d.firma;
         if (d.firma_entrega !== undefined) o.firma_entrega = d.firma_entrega;
+        if (d.adjuntos) o.adjuntos = d.adjuntos;
         if (d.historial) o.historial = d.historial;
       } catch (e) { alert('No se pudo guardar: no hay conexión con el servidor del CRM.'); return false; }
       if (i >= 0) L[i] = o; else L.unshift(o);
       delete this.etags['/api/data'];   // la copia local cambió: hay que volver a bajar el listado en la próxima
+      if (this.sync) this.sync.sello = '';   // el "sello" cambió por nuestro propio cambio: no hace falta recargar solo
       return true;
     }
     if (i >= 0) L[i] = o; else { this.data.seq++; o.seq = this.data.seq; L.unshift(o); }
@@ -96,13 +98,14 @@ export const DB = {
   },
   async remove(id) {
     this.data.ordenes = this.data.ordenes.filter(x => x.id !== id);
-    if (this.api) { try { await this.req('/api/orden/' + id, { method: 'DELETE' }); } catch (e) { alert('No se pudo borrar en la base.'); return false; } return true; }
+    if (this.api) { try { await this.req('/api/orden/' + id, { method: 'DELETE' }); } catch (e) { alert('No se pudo borrar en la base.'); return false; } if (this.sync) this.sync.sello = ''; return true; }
     return this.save();
   },
   async saveConfig(c) {
     this.data.config = c;
     if (this.api) {
       try { await this.req('/api/config', { method: 'POST', body: JSON.stringify(c) }); } catch (e) { alert('No se pudo guardar la configuración.'); return false; }
+      if (this.sync) this.sync.sello = '';
       return true;
     }
     return this.save();

@@ -218,6 +218,53 @@ class ApiTest(unittest.TestCase):
         self.assertEqual((got2["presu_estado"], got2["estado"], got2["presu_motivo"]), ("Rechazado", "Rechazado", "está caro"))
         a.delete("/api/orden/apr1"); a.delete("/api/orden/apr2")
 
+    def test_tareas_y_adjuntos(self):
+        """Tareas/recordatorios y adjuntos (documentos) por orden: solo se guardan tipos de archivo seguros."""
+        import base64
+        a = self.env.client(); a.login()
+        pdf = "data:application/pdf;base64," + base64.b64encode(b"%PDF-1.4 prueba").decode()
+        txt = "data:text/plain;base64," + base64.b64encode(b"hola").decode()
+        o = {"id": "adj1", "cliente": "Adj", "tel": "11",
+             "tareas": [{"t": "Pedir repuesto", "f": "2020-01-01", "hecho": False, "u": "admin", "fc": "2026-10-14T10:00:00Z"},
+                        {"t": "Avisar al cliente", "hecho": True}],
+             "adjuntos": [{"n": "informe.pdf", "data": pdf}, {"n": "nota.txt", "data": txt},
+                          {"n": "malo.svg", "data": "data:image/svg+xml;base64," + base64.b64encode(b"<svg/>").decode()},
+                          {"n": "malo.exe", "data": "data:application/octet-stream;base64," + base64.b64encode(b"MZ").decode()}]}
+        self.assertEqual(a.post("/api/orden", o)[0], 200)
+        got = self._orden(a, "adj1")
+        self.assertEqual([t["t"] for t in got["tareas"]], ["Pedir repuesto", "Avisar al cliente"])
+        self.assertTrue(got["tareas"][1]["hecho"])
+        self.assertEqual([x["n"] for x in got["adjuntos"]], ["informe.pdf", "nota.txt"])          # solo los tipos permitidos
+        self.assertRegex(got["adjuntos"][0]["u"], r"^/media/adj1/[0-9a-f]{20}\.pdf$")
+        code, _, h = a.get(got["adjuntos"][0]["u"])
+        self.assertEqual((code, h["Content-Type"]), (200, "application/pdf")); self.assertNotIn("Content-Disposition", h)
+        code, _, h = a.get(got["adjuntos"][1]["u"])
+        self.assertEqual((code, h["Content-Type"]), (200, "text/plain")); self.assertTrue(h["Content-Disposition"].startswith("attachment"))
+        # editar conservando un adjunto: el que se saca se borra del disco
+        keep = got["adjuntos"][0]
+        self.assertEqual(a.post("/api/orden", {**o, "adjuntos": [keep]})[0], 200)
+        self.assertEqual([x["n"] for x in self._orden(a, "adj1")["adjuntos"]], ["informe.pdf"])
+        self.assertEqual(a.get(got["adjuntos"][1]["u"])[0], 404); self.assertEqual(a.get(keep["u"])[0], 200)
+        a.delete("/api/orden/adj1")
+        self.assertEqual(a.get(keep["u"])[0], 404)                                               # borrar la orden borra sus adjuntos
+
+    def test_auditoria_global(self):
+        """La bitácora registra ingresos, configuración, órdenes y usuarios; solo la ve el administrador."""
+        a = self.env.client(); a.login()
+        a.post("/api/config", {"taller": "Taller Auditado"})
+        self.assertEqual(a.post("/api/orden", {"id": "aud1", "cliente": "Aud", "tel": "11"})[0], 200)
+        self.assertEqual(a.post("/api/orden", {"id": "aud2", "cliente": "Aud2", "tel": "11"})[0], 200)
+        self.assertEqual(a.delete("/api/orden/aud2")[0], 200)
+        a.post("/api/usuarios", {"nombre": "tec-aud", "password": "clave-tec-1234", "rol": "tecnico"})
+        t = self.env.client(); t.login("tec-aud", "clave-tec-1234")
+        self.assertEqual(t.get("/api/auditoria")[0], 403)                                        # el técnico no ve la auditoría
+        code, d, _ = a.get("/api/auditoria?limit=100")
+        self.assertEqual(code, 200)
+        acciones = {m["accion"] for m in d["movimientos"]}
+        self.assertTrue({"sesión", "config", "orden", "usuarios"} <= acciones, acciones)
+        self.assertTrue(all(m["fecha"] and m["usuario"] for m in d["movimientos"]))
+        a.delete("/api/usuarios/tec-aud"); a.delete("/api/orden/aud1")
+
     def test_permisos_finos_importes_y_borrado(self):
         """ocultar_importes borra la plata de la vista del técnico y perm_borrar_admin lo habilita a borrar."""
         a = self.env.client(); a.login()

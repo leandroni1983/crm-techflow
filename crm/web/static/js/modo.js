@@ -16,16 +16,25 @@ export function drawModo() {
     ? `<span>${s.online ? '●' : '⚠️'} ${s.online ? 'Base de datos: ' + esc(s.motor) : 'Sin conexión con la base de datos: trabajando en modo local'}${cola}${err}${rep.length ? ` · ⚠️ ${rep.length} repuesto${rep.length > 1 ? 's' : ''} para reponer` : ''} · 👤 ${esc(DB.usuario?.nombre || '')}</span>` + (n ? `<button id="bImp">Importar ${n} órdenes que quedaron en el navegador</button>` : '') + '<button id="bOut">Salir</button>'
     : '<span>⚠️ Modo navegador: los datos NO se guardan en la base. Ejecutá `python -m crm` y abrí http://localhost:8000 (el PDF y el QR necesitan el servidor)</span>';
 }
-/* Estado de sincronización: se consulta cada 10 s; si volvió la conexión y se vació la cola, se recarga la lista */
-setInterval(async () => {
+/* Estado de sincronización y "tiempo real": se consulta cada 5 s. Además de detectar que volvió la conexión,
+   si otro usuario cambió algo (el servidor lo resume en un "sello"), se recarga la lista sola. No se recarga
+   si hay un diálogo abierto o cambios locales sin subir, para no pisar lo que estás escribiendo. */
+async function palpar() {
   if (!DB.api) return;
   try {
-    const prev = DB.sync, r = await DB.req('/api/estado'); DB.sync = await r.json();
-    const cambio = prev && (!prev.online || prev.pendientes > 0) && DB.sync.online && DB.sync.pendientes === 0;
-    if (cambio && !$('dOrd').open) { await DB.load(); refrescar(); }
+    const prev = DB.sync, r = await DB.req('/api/estado'), s = await r.json();
+    DB.sync = s;
+    const antes = prev && (!prev.online || prev.pendientes > 0);
+    const reconectado = antes && s.online && s.pendientes === 0;
+    const remoto = s.online && s.pendientes === 0 && !s.errores && prev && prev.sello && s.sello && s.sello !== prev.sello;
+    const ocupado = $('dOrd').open || $('dCfg').open || $('dCli').open || $('dCaja').open || $('dMov').open;
+    if ((reconectado || remoto) && !ocupado) { await DB.load(); refrescar(); }
     drawModo();
   } catch (e) { /* sin servidor del CRM: se verá al intentar guardar */ }
-}, 10000);
+}
+setInterval(palpar, 5000);
+/* Al volver a la pestaña, se consulta enseguida (así se ve lo último sin esperar al intervalo). */
+document.addEventListener('visibilitychange', () => { if (!document.hidden) palpar(); });
 async function importarLocal() {
   const L = localOrders().sort((a, b) => (a.seq || 0) - (b.seq || 0));
   if (!confirm(`Se van a pasar ${L.length} órdenes a la base de datos. Reciben un número nuevo de secuencia. ¿Continuar?`)) return;

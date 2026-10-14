@@ -86,6 +86,18 @@ label.inl{display:flex;gap:6px;align-items:center;color:var(--tx);margin-top:8px
 .pago{display:grid;grid-template-columns:90px 1fr 110px 1fr auto;gap:6px;align-items:center;margin:4px 0}
 .pago .mut{font-size:12px}
 .caja-tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:10px 0}
+/* Tareas/recordatorios dentro de la orden y en la lista. */
+.tarea{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--bd)}
+.tarea:last-child{border-bottom:none}
+.tarea label{display:flex;gap:8px;align-items:center;margin:0;min-width:0}
+.tarea label span{overflow-wrap:anywhere}
+.tarea.hecho label span{text-decoration:line-through;color:var(--mut)}
+.tarea input[type=checkbox]{width:auto;flex:none}
+.tarea button{padding:0 8px}
+.ln.tareas{color:var(--wn);font-weight:600}
+.ln.tareas.venc{color:var(--dg)}
+/* Adjuntos (documentos) de una orden. */
+.ln a{color:var(--ac)}
 
 /* ============ PANEL DE ESTADÍSTICAS ============ */
 .dh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}

@@ -126,7 +126,46 @@ export async function enviarPDF(o, tipo = 'ingreso') {
 const CAMPOS = { cliente: 'fCli', tel: 'fTel', direccion: 'fDir', equipo: 'fEq', equipo_tipo: 'fEt', marca: 'fMa', color: 'fCo', serie: 'fSe', accesorios: 'fAc',
   fisico: 'fFi', deteriorado: 'fDe', tecnico: 'fTe', clave: 'fCl', falla_tipo: 'fFt', garantia_fab: 'fGf', problema: 'fPr', observ: 'fOb', estado: 'fSt', hora: 'fHo',
   entrega_est: 'fEe', autoriza: 'fAu', diagnostico: 'fDx', monto: 'fMo', sena: 'fSn', entrega_fecha: 'fEf', prioridad: 'fPri' };
-let editing = null, tmpImgs = [], tmpRep = [], tmpPagos = [];
+let editing = null, tmpImgs = [], tmpRep = [], tmpPagos = [], tmpTareas = [], tmpAdj = [], prefil = null;
+const ADJ_OK = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt', 'csv', 'zip', 'doc', 'docx', 'xls', 'xlsx'];
+const tam = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+
+/* ---- tareas / recordatorios de la orden ---- */
+function drawTareas() {
+  const h = hoy();
+  $('fTareas').innerHTML = tmpTareas.length
+    ? tmpTareas.map((t, i) => `<div class="tarea ${t.hecho ? 'hecho' : ''}">
+        <label class="inl"><input type="checkbox" data-tchk="${i}" ${t.hecho ? 'checked' : ''}> <span>${esc(t.t)}</span></label>
+        <span class="mut">${t.f ? (t.f < h && !t.hecho ? '⚠️ vencía el ' : 'para el ') + fmtD(t.f) : ''}</span>
+        <button type="button" data-tdel="${i}" title="Quitar tarea">×</button></div>`).join('')
+    : '<div class="mut">Sin tareas. Agregá recordatorios (llamar al cliente, pedir repuesto…).</div>';
+}
+/* ---- adjuntos (documentos) ---- */
+function drawAdj() {
+  $('fAdjList').innerHTML = tmpAdj.length
+    ? tmpAdj.map((a, i) => `<div class="kv"><span>📎 ${esc(a.n)} <span class="mut">· ${tam(a.s || 0)}</span></span><span><button type="button" data-adel="${i}" title="Quitar adjunto">×</button></span></div>`).join('')
+    : '<div class="mut">Sin adjuntos.</div>';
+}
+$('bTarAdd').onclick = () => {
+  const t = $('tTarTxt').value.trim();
+  if (!t) return alert('Escribí la tarea.');
+  tmpTareas.push({ t, f: $('tTarFec').value || '', hecho: false, u: yo(), fc: ahora() });
+  $('tTarTxt').value = ''; $('tTarFec').value = ''; drawTareas();
+};
+$('fTareas').onclick = e => { if (e.target.dataset.tdel !== undefined) { tmpTareas.splice(+e.target.dataset.tdel, 1); drawTareas(); } };
+$('fTareas').onchange = e => { const i = e.target.dataset.tchk; if (i !== undefined) { tmpTareas[i].hecho = e.target.checked; drawTareas(); } };
+$('fAdjList').onclick = e => { if (e.target.dataset.adel !== undefined) { tmpAdj.splice(+e.target.dataset.adel, 1); drawAdj(); } };
+$('fAdj').onchange = async e => {
+  const files = [...e.target.files]; e.target.value = '';
+  for (const f of files) {
+    const ext = (f.name.split('.').pop() || '').toLowerCase();
+    if (!ADJ_OK.includes(ext)) { alert(`No se permite “${f.name}”: usá PDF, Word/Excel, ZIP, imágenes o texto.`); continue; }
+    if (f.size > 15 * 1024 * 1024) { alert(`“${f.name}” pesa más de 15 MB.`); continue; }
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = rej; r.readAsDataURL(f); });
+    tmpAdj.push({ n: f.name, data, s: f.size });
+  }
+  drawAdj();
+};
 
 /* ---- pagos parciales (seña + pagos): se muestra el total cobrado y el saldo ---- */
 function drawPagos() {
@@ -184,20 +223,25 @@ $('bFirmaClr').onclick = () => pad1.limpiar(); $('bFirma2Clr').onclick = () => p
 let ftManual = false, etManual = false;   // el técnico eligió el tipo a mano: no lo pisamos con la sugerencia
 export function openOrd(o) {
   editing = o || null;
-  const b = o || { ...ordenVacia(), tecnico: yo(), hora: `${p2(new Date().getHours())}:${p2(new Date().getMinutes())}` };
+  const b = o || { ...ordenVacia(), ...(prefil || {}), tecnico: yo(), hora: `${p2(new Date().getHours())}:${p2(new Date().getMinutes())}` };
+  prefil = null;
   $('dTitle').textContent = o ? 'Editar ' + numOrden(o) : 'Nueva orden';
   $('fTe').innerHTML = opcTec(b.tecnico);
   for (const [k, id] of Object.entries(CAMPOS)) $(id).value = b[k] || '';
   ftManual = !!b.falla_tipo; etManual = !!b.equipo_tipo;
   $('fSt').value = b.estado || ESTADOS[0]; $('fPg').checked = (b.pagado === '1' || b.pagado === true);
   tmpImgs = [...b.imagenes]; tmpRep = b.repuestos.map(r => ({ ...r })); tmpPagos = (b.pagos || []).map(p => ({ ...p }));
-  drawChk(b.checklist); drawRep(); drawRepCat(); drawImgs(); drawPagos(); $('fImg').value = '';
+  tmpTareas = (b.tareas || []).map(t => ({ ...t })); tmpAdj = (b.adjuntos || []).map(a => ({ ...a }));
+  drawChk(b.checklist); drawRep(); drawRepCat(); drawImgs(); drawPagos(); drawTareas(); drawAdj();
+  $('fImg').value = ''; $('fAdj').value = ''; $('tTarTxt').value = ''; $('tTarFec').value = '';
   $('fPl').innerHTML = '<option value="">— elegir plantilla —</option>' + plantillas().map((p, i) => `<option value="${i}">${esc(p[0])}</option>`).join('');
   pad1.set(b.firma); pad2.set(b.firma_entrega);
   $('fsHist').style.display = o ? '' : 'none';
   $('fHist').innerHTML = [...b.historial].reverse().map(h => `${new Date(h.f).toLocaleString('es-AR')} — ${h.u ? '<b>' + esc(h.u) + '</b>: ' : ''}${esc(h.t)}`).join('<br>') || 'Sin movimientos';
   showCliHist(); $('dOrd').showModal();
 }
+/* Abre el alta de una orden nueva con datos ya precargados (se usa desde la ficha del cliente). */
+export function nuevaOrden(datos) { prefil = datos || {}; openOrd(); }
 $('bNew').onclick = () => openOrd();
 $('bNew2').onclick = () => openOrd();
 $('fFt').onchange = () => { ftManual = true; };
@@ -247,7 +291,7 @@ $('bSave').onclick = async () => {
   o.pagado = $('fPg').checked ? '1' : '';
   o.checklist = [...$('fChk').querySelectorAll('input:checked')].map(i => i.value);
   o.repuestos = tmpRep.filter(r => r.desc || r.costo); o.imagenes = tmpImgs; o.firma = pad1.get(); o.firma_entrega = pad2.get();
-  o.pagos = tmpPagos.map(p => ({ ...p }));
+  o.pagos = tmpPagos.map(p => ({ ...p })); o.tareas = tmpTareas.map(t => ({ ...t })); o.adjuntos = tmpAdj.map(a => ({ ...a }));
   const H = t => o.historial.push({ f: ahora(), t, n: true });
   if (!editing) { o.estado_fecha = ahora(); H('Orden creada'); }
   else {
@@ -256,6 +300,10 @@ $('bSave').onclick = async () => {
     if ((editing.prioridad || 'Normal') !== (o.prioridad || 'Normal')) H(`Prioridad: ${editing.prioridad || 'Normal'} → ${o.prioridad || 'Normal'}`);
     o.pagos.slice((editing.pagos || []).length).forEach(p => H(`Pago registrado: ${money(num(p.monto))} (${p.medio || 'sin medio'})`));
   }
+  const vT = editing?.tareas || [];
+  o.tareas.filter(t => !vT.some(x => x.fc === t.fc && x.t === t.t)).forEach(t => H(`Tarea: ${t.t}${t.f ? ' (para el ' + fmtD(t.f) + ')' : ''}`));
+  o.tareas.filter(t => t.hecho && !vT.some(x => x.fc === t.fc && x.hecho)).forEach(t => H(`Tarea completada: ${t.t}`));
+  o.adjuntos.filter(a => !a.u).forEach(a => H(`Adjunto: ${a.n}`));
   if (o.estado === 'Entregado' && !o.entrega_fecha) o.entrega_fecha = hoy();
   if (await DB.upsert(o)) { $('dOrd').close(); refrescar(); }
 };

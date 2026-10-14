@@ -3,8 +3,8 @@
    La lista se dibuja de a 50 para que con miles de órdenes el celular siga andando rápido. */
 import { $, esc, num, money, fmtD, diasDesde } from './util.js';
 import { DB } from './db.js';
-import { find, yo, nombreEq, fechaOrd, saldo, costoRep, numOrden, normTel, esViejo, alertaDias, segLink, copiarLink, log } from './comun.js';
-import { tipoMsg, LBL, LOGT, waLink, waComp, faltaPresu, garTxt, garantiaHasta, imprimir, etiquetar, enviarPDF, openOrd, aPapelera, enGarantia } from './orden.js';
+import { find, yo, nombreEq, fechaOrd, saldo, costoRep, numOrden, normTel, esViejo, alertaDias, segLink, copiarLink, log, tareasPend, tareasVencidas } from './comun.js';
+import { tipoMsg, LBL, LOGT, waLink, waComp, faltaPresu, garTxt, garantiaHasta, imprimir, etiquetar, enviarPDF, openOrd, nuevaOrden, aPapelera, enGarantia } from './orden.js';
 
 const PAGINA = 50;                       // órdenes que se dibujan de una vez
 let quick = '', abierta = null, limite = PAGINA;
@@ -15,6 +15,8 @@ const QUICK = {
   pre: ['Presupuesto', o => o.estado === 'Presupuesto'],
   rep: ['Esperando repuesto', o => o.estado === 'Esperando repuesto'],
   listo: ['Listos para retirar', o => o.estado === 'Listo para retirar'],
+  tar: ['Con tareas', o => tareasPend(o).length > 0],
+  venc: ['Tareas vencidas', o => tareasVencidas(o).length > 0],
   viejos: ['Sin retirar +días', esViejo],
   gar: ['En garantía', enGarantia]
 };
@@ -26,7 +28,7 @@ function drawChips() {
   }).join('');
 }
 function card(o) {
-  const g = garantiaHasta(o), tipo = tipoMsg(o), costos = costoRep(o), viejo = esViejo(o);
+  const g = garantiaHasta(o), tipo = tipoMsg(o), costos = costoRep(o), viejo = esViejo(o), tp = tareasPend(o);
   const sal = saldo(o);
   const dinero = [num(o.monto) && 'Presupuesto: ' + money(num(o.monto)), (num(o.sena) || (o.pagos||[]).length) && 'Pagado: ' + money(num(o.sena) + (o.pagos||[]).reduce((a,p)=>a+num(p.monto),0)),
     num(o.monto) && ((o.pagado === '1' || o.pagado === true) ? '✅ Pagado' : (sal>0?'Saldo: ' + money(sal):'✅ Pagado'))].filter(Boolean).join(' · ');
@@ -53,6 +55,8 @@ function card(o) {
     ${o.entrega_est && o.estado !== 'Entregado' ? `<div class="mut ln">📅 Entrega estimada: ${fmtD(o.entrega_est)}</div>` : ''}
     ${g ? `<div class="ln"><span class="tag ${g >= new Date() ? 'ok' : 'warn'}">${esc(garTxt(o))}</span></div>` : ''}
     ${costos ? `<div class="mut ln">Costo repuestos: ${money(costos)}${num(o.monto) ? ' · Ganancia: ' + money(num(o.monto) - costos) : ''}</div>` : ''}
+    ${tp.length ? `<div class="ln tareas${tareasVencidas(o).length ? ' venc' : ''}">✅ ${tp.length} tarea${tp.length > 1 ? 's' : ''}: ${tp.map(t => esc(t.t) + (t.f ? ' (' + fmtD(t.f) + ')' : '')).join(' · ')}</div>` : ''}
+    ${o.adjuntos.length ? `<div class="mut ln">📎 ${o.adjuntos.map(a => `<a href="${esc(a.u)}" target="_blank" rel="noopener">${esc(a.n)}</a>`).join(', ')}</div>` : ''}
     ${o.imagenes.length ? `<div class="imgs">${o.imagenes.map(s => s.startsWith('data:') ? `<img src="${s}" alt="foto">` : `<a href="${s}" target="_blank" rel="noopener"><img loading="lazy" decoding="async" src="${s}" alt="foto"></a>`).join('')}</div>` : ''}
     <div class="acts">
       ${faltaPresu(o) ? `<button class="wa" data-a="falta">${LBL.presupuesto}</button>`
@@ -140,7 +144,7 @@ export function drawTec() {
 /* ============ FICHA DE CLIENTE ============
    Todo el historial de una persona: sus equipos, lo que debe y lo que ya pagó. Se abre desde el botón
    "👤 Cliente" de una orden y agrupa por teléfono (o por nombre si no hay teléfono). */
-let fichaActual = [];
+let fichaActual = [], fichaEq = {};
 const claveCli = o => { const t = normTel(o.tel); return t ? 't:' + t : 'n:' + String(o.cliente || '').trim().toLowerCase(); };
 function fichaCliente(o) {
   const k = claveCli(o), L = DB.ordenes.filter(x => claveCli(x) === k).sort((a, b) => String(b.creada).localeCompare(String(a.creada)));
@@ -148,6 +152,8 @@ function fichaCliente(o) {
   const cob = L.reduce((a, x) => a + num(x.sena) + (x.pagos || []).reduce((s, p) => s + num(p.monto), 0), 0);
   const fact = L.filter(x => x.estado === 'Entregado').reduce((a, x) => a + num(x.monto), 0);
   const eq = [...new Set(L.map(nombreEq).filter(Boolean))];
+  const grupos = {}; L.forEach(x => { const n = nombreEq(x) || '(sin equipo)'; (grupos[n] = grupos[n] || []).push(x); });
+  fichaEq = Object.fromEntries(Object.entries(grupos).map(([n, xs]) => [n, xs[0]]));
   $('dCliTit').textContent = '👤 ' + (o.cliente || 'Cliente');
   $('dCliBody').innerHTML = `
     <div class="caja-tot">
@@ -158,6 +164,8 @@ function fichaCliente(o) {
     </div>
     ${o.tel ? `<div class="mut ln">📱 ${esc(o.tel)}${o.direccion ? ' · ' + esc(o.direccion) : ''}</div>` : ''}
     ${eq.length ? `<div class="mut ln">Equipos: ${eq.map(esc).join(', ')}</div>` : ''}
+    <div style="margin-top:10px"><b>Equipos de este cliente</b><span class="mut"> · tocá para repetir la orden con el mismo equipo</span></div>
+    <div class="movs">${Object.entries(grupos).map(([n, xs]) => `<div class="kv"><span>${esc(n)}<span class="mut"> · ${xs.length} orden${xs.length > 1 ? 'es' : ''} · última ${esc(fmtD(String(xs[0].creada).slice(0, 10)))}</span></span><button type="button" data-neweq="${esc(n)}">+ Orden de este equipo</button></div>`).join('')}</div>
     <div style="margin-top:10px" class="movs">${L.map(x => {
       const s = saldo(x);
       return `<div class="kv"><span>${esc(numOrden(x))} · ${esc(nombreEq(x))}<span class="mut"> · ${esc(fmtD(String(x.creada).slice(0, 10)))} · ${esc(x.estado)}</span></span>
@@ -167,6 +175,12 @@ function fichaCliente(o) {
   $('dCli').showModal();
 }
 $('dCliCan').onclick = () => $('dCli').close();
+$('dCli').onclick = e => {
+  const b = e.target.closest('[data-neweq]'); if (!b) return;
+  const x = fichaEq[b.dataset.neweq]; if (!x) return;
+  $('dCli').close();
+  nuevaOrden({ cliente: x.cliente, tel: x.tel, direccion: x.direccion, equipo: x.equipo, equipo_tipo: x.equipo_tipo, marca: x.marca, serie: x.serie });
+};
 $('dCliCsv').onclick = () => {
   const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
   const cab = ['N° orden', 'Fecha', 'Cliente', 'Equipo', 'Estado', 'Presupuesto', 'Seña', 'Pagos', 'Total cobrado', 'Deuda'];

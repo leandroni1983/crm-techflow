@@ -224,6 +224,16 @@ class DataService:
             self.c_cfg.update({k: str(v) for k, v in d.items()}); self._outbox_add("config", "", d)
         self.wake.set()
 
+    # ------------------------------------------------------------ auditoría global
+    def audit(self, usuario, accion, detalle=""):
+        """Anota una acción en la bitácora global. Es "best effort": si no hay base no rompe la acción."""
+        try: self._remote(lambda: self.remote.audit_add(usuario, accion, detalle))
+        except Exception as e: log(f"No se pudo registrar en la auditoría: {e}")
+
+    def auditoria(self, limit=300):
+        ok, rows = self._remote(lambda: self.remote.audit_all(limit))
+        return rows if ok else []
+
     # ------------------------------------------------------------ mantenimiento (necesita conexión)
     CAT_COLS = {"fallas": "falla_tipo", "equipos": "equipo_tipo"}
 

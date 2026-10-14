@@ -50,8 +50,24 @@ def m6_pagos_prioridad_aprobacion(t):
             t.run(f"ALTER TABLE ordenes ADD COLUMN {col} TEXT")
 
 
+def m7_tareas_y_adjuntos(t):
+    """Tareas/recordatorios y adjuntos (documentos) por orden. Los dos se guardan como listas JSON."""
+    have = _cols(t, "ordenes")
+    for col in ("tareas", "adjuntos"):
+        if col not in have and col in JSON_COLS:
+            t.run(f"ALTER TABLE ordenes ADD COLUMN {col} TEXT")
+
+
+def m8_auditoria(t):
+    """Registro global de acciones (quién hizo qué y cuándo), para que el administrador audite el taller."""
+    t.run("CREATE TABLE IF NOT EXISTS auditoria(id TEXT PRIMARY KEY, fecha TEXT, usuario TEXT, accion TEXT, detalle TEXT)")
+    t.run("CREATE INDEX IF NOT EXISTS auditoria_fecha_idx ON auditoria(fecha)")
+
+
 MIGRATIONS = [(1, "esquema base", m1_esquema), (2, "secuencia de números de orden", m2_secuencia),
               (3, "tipo de falla", m3_falla_tipo), (4, "tipo de equipo", m4_equipo_tipo),
               (5, "papelera", m5_papelera),
-              (6, "pagos y aprobación de presupuesto", m6_pagos_prioridad_aprobacion)]
+              (6, "pagos y aprobación de presupuesto", m6_pagos_prioridad_aprobacion),
+              (7, "tareas y adjuntos", m7_tareas_y_adjuntos),
+              (8, "auditoría global", m8_auditoria)]
 LATEST = MIGRATIONS[-1][0]

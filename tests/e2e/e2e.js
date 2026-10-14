@@ -144,6 +144,7 @@ const ok = (c, m) => { if (!c) fallas++; console.log((c ? 'OK   ' : 'FALLA') + '
   await tp.click('#bCfg'); ok(await tp.locator('#cUsr').isHidden(), 'técnico no ve el panel de usuarios');
   ok(await tp.locator('#cFall').isHidden(), 'técnico no ve el editor de fallas (solo administrador)');
   ok(await tp.locator('#cEqu').isHidden(), 'técnico no ve el editor de equipos (solo administrador)');
+  ok(await tp.locator('#cAud').isHidden(), 'técnico no ve la auditoría (solo administrador)');
   await tp.click('#cCan'); await tp.click('#bOut'); await tp.waitForURL('**/login');
   ok((await tp.evaluate(async () => (await fetch('/api/data')).status)) === 401, 'logout cierra la sesión');
   const old = await tp.evaluate(async () => (await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usuario: 'admin', password: 'Secreta123' }) })).status);
@@ -282,6 +283,58 @@ const ok = (c, m) => { if (!c) fallas++; console.log((c ? 'OK   ' : 'FALLA') + '
   await ctx3.close();
   const dApr2 = (await (await page.request.get(BASE + '/api/data')).json()).ordenes.find(x => x.cliente === 'Aprueba Cliente');
   ok(dApr2.presu_estado === 'Aprobado' && dApr2.estado === 'Aprobado' && dApr2.presu_quien === 'cliente', 'la aprobación del cliente cambia el estado y registra quién decidió');
+  // --- tareas/recordatorios y adjuntos en la orden
+  const ayer = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  await page.click('#bNew');
+  await page.fill('#fCli', 'Con Tareas'); await page.fill('#fTel', '1177776666'); await page.fill('#fEq', 'Impresora');
+  await page.fill('#tTarTxt', 'Pedir repuesto'); await page.fill('#tTarFec', ayer); await page.click('#bTarAdd');
+  ok((await page.textContent('#fTareas')).includes('Pedir repuesto') && (await page.textContent('#fTareas')).includes('vencía'), 'se agrega una tarea con fecha límite y se marca la vencida');
+  fs.writeFileSync(ASSETS + '/nota.txt', 'nota de prueba del taller');
+  await page.setInputFiles('#fAdj', ASSETS + '/nota.txt');
+  await page.waitForFunction(() => document.getElementById('fAdjList').textContent.includes('nota.txt'));
+  ok(true, 'se adjunta un archivo permitido (txt)');
+  fs.writeFileSync(ASSETS + '/malo.svg', '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  await page.setInputFiles('#fAdj', ASSETS + '/malo.svg'); await page.waitForTimeout(250);
+  ok(!(await page.textContent('#fAdjList')).includes('malo.svg'), 'se rechaza un tipo de archivo no permitido (svg)');
+  await page.click('#bSave'); await page.waitForTimeout(400);
+  const cTar = page.locator('.ord').filter({ hasText: 'Con Tareas' });
+  if (await cTar.locator('.ord-body').isHidden()) await cTar.locator('.ord-line').click();
+  ok((await cTar.textContent()).includes('Pedir repuesto'), 'la tarjeta muestra la tarea pendiente');
+  ok((await cTar.textContent()).includes('nota.txt'), 'la tarjeta muestra el adjunto con su enlace');
+  const dTar = (await (await page.request.get(BASE + '/api/data')).json()).ordenes.find(x => x.cliente === 'Con Tareas');
+  ok(dTar.tareas.length === 1 && dTar.tareas[0].t === 'Pedir repuesto' && dTar.tareas[0].f === ayer, 'la tarea con fecha queda guardada en la base');
+  ok(dTar.adjuntos.length === 1 && dTar.adjuntos[0].n === 'nota.txt' && dTar.adjuntos[0].u.startsWith('/media/'), 'el adjunto queda guardado como archivo');
+  const adjR = await page.request.get(BASE + dTar.adjuntos[0].u);
+  ok(adjR.status() === 200 && (adjR.headers()['content-type'] || '').startsWith('text/plain') && (adjR.headers()['content-disposition'] || '').includes('attachment'), 'el adjunto se sirve con su tipo y como descarga');
+  ok((await page.textContent('#chips')).includes('Con tareas') && (await page.textContent('#chips')).includes('Tareas vencidas'), 'hay accesos rápidos de tareas');
+  await page.click('.chip[data-q="venc"]'); await page.waitForTimeout(200);
+  ok((await page.locator('#list .ord').count()) === 1 && (await page.textContent('#list')).includes('Con Tareas'), 'el chip de tareas vencidas filtra la orden atrasada');
+  await page.click('.chip[data-q=""]'); await page.waitForTimeout(200);
+  if (await cTar.locator('.ord-body').isHidden()) await cTar.locator('.ord-line').click();
+  await cTar.locator('[data-a="edit"]').click(); await page.waitForSelector('#dOrd[open]');
+  await page.check('#fTareas input[type=checkbox]'); await page.click('#bSave'); await page.waitForTimeout(400);
+  const dTar2 = (await (await page.request.get(BASE + '/api/data')).json()).ordenes.find(x => x.cliente === 'Con Tareas');
+  ok(dTar2.tareas[0].hecho === true, 'la tarea se puede marcar como hecha');
+  // --- equipos por cliente: repetir la orden con el mismo equipo desde la ficha
+  const cPag = page.locator('.ord').filter({ hasText: 'Con Pagos' });
+  if (await cPag.locator('.ord-body').isHidden()) await cPag.locator('.ord-line').click();
+  await cPag.locator('[data-a="cli"]').click();
+  await page.waitForSelector('#dCli[open]');
+  ok((await page.locator('#dCliBody [data-neweq]').count()) >= 1, 'la ficha del cliente lista sus equipos');
+  await page.click('#dCliBody [data-neweq]'); await page.waitForSelector('#dOrd[open]');
+  ok((await page.inputValue('#fCli')) === 'Con Pagos' && (await page.inputValue('#fTel')) === '1199998888' && (await page.inputValue('#fEq')) === 'Notebook', '“orden de este equipo” precarga cliente, teléfono y equipo');
+  await page.click('#bCan'); await page.waitForTimeout(150);
+  // --- auditoría global (solo administrador)
+  await page.click('#bCfg'); await page.waitForFunction(() => document.getElementById('cAudList').textContent.length > 0);
+  const aud = await page.textContent('#cAudList');
+  ok(aud.includes('admin') && /(orden|config|sesión)/i.test(aud), 'la auditoría muestra quién hizo qué');
+  const audApi = await page.evaluate(async () => ((await (await fetch('/api/auditoria?limit=50')).json()).movimientos || []).length);
+  ok(audApi > 0, 'la API de auditoría devuelve los movimientos al administrador');
+  await page.click('#cCan'); await page.waitForTimeout(150);
+  // --- tiempo real: un cambio hecho por otro se refleja solo, sin recargar la página
+  await page.request.post(BASE + '/api/orden', { data: { id: 'rt1', cliente: 'Remoto RT', tel: '11', estado: 'Recibido' } });
+  await page.waitForFunction(() => document.body.textContent.includes('Remoto RT'), null, { timeout: 12000 });
+  ok(true, 'un cambio remoto aparece solo en la lista (tiempo real por sondeo del sello)');
   // --- paginación: con muchas órdenes la lista se dibuja de a 50 (el celular no se traba)
   for (let i = 0; i < 55; i++)
     await page.request.post(BASE + '/api/orden', { data: { id: 'pag' + i, cliente: 'Pag' + i, tel: '11', estado: 'Recibido' } });

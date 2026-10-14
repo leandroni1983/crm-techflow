@@ -5,7 +5,7 @@ TEXT_COLS = ["cliente", "tel", "direccion", "equipo", "equipo_tipo", "marca", "c
              "clave", "falla_tipo", "problema", "diagnostico", "monto", "autoriza", "sena", "pagado", "estado", "estado_fecha", "hora",
              "entrega_est", "entrega_fecha", "garantia_fab", "observ", "firma", "firma_entrega", "tecnico", "borrada",
              "prioridad", "presu_estado", "presu_fecha", "presu_motivo", "presu_quien"]
-JSON_COLS = ["checklist", "repuestos", "historial", "imagenes", "pagos"]
+JSON_COLS = ["checklist", "repuestos", "historial", "imagenes", "pagos", "tareas", "adjuntos"]
 ORDER_COLS = ["id", "seq"] + TEXT_COLS + JSON_COLS + ["creada", "actualizada"]
 
 

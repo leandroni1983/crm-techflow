@@ -12,15 +12,19 @@ def save_order(app, user, d):
     - el número de orden lo decide el servidor, nunca el cliente."""
     oid = str(d["id"])
     d.pop("seq", None); d.pop("actualizada", None)
+    ahora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     imgs = [u for u in (app.media.save(oid, x) for x in (d.get("imagenes") or [])) if u]
     firma, firma_e = app.media.save(oid, d.get("firma", "")), app.media.save(oid, d.get("firma_entrega", ""))
-    d["id"], d["imagenes"], d["firma"], d["firma_entrega"] = oid, imgs, firma, firma_e
-    ahora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    adjuntos = []
+    for x in (d.get("adjuntos") or []):
+        r = app.media.save_adjunto(oid, x)
+        if r: adjuntos.append({**r, "f": (x.get("f") if isinstance(x, dict) else None) or ahora})
+    d["id"], d["imagenes"], d["firma"], d["firma_entrega"], d["adjuntos"] = oid, imgs, firma, firma_e, adjuntos
     hist_new = [{"f": ahora, "t": str(h.get("t", ""))[:300], "u": user["nombre"]}
                 for h in (d.get("historial") or []) if isinstance(h, dict) and h.get("n")]
     res = app.service.order_save(norm_order(d), hist_new)
-    app.media.clean(oid, imgs + [firma, firma_e])
-    return {"seq": res["seq"], "imagenes": imgs, "firma": firma, "firma_entrega": firma_e, "historial": res["historial"]}
+    app.media.clean(oid, imgs + [firma, firma_e] + [a["u"] for a in adjuntos])
+    return {"seq": res["seq"], "imagenes": imgs, "firma": firma, "firma_entrega": firma_e, "adjuntos": adjuntos, "historial": res["historial"]}
 
 
 def delete_order(app, oid):

@@ -3,7 +3,7 @@
    inventario de repuestos y el enganche para volver a pintar la pantalla. El enganche (refrescar) evita que
    los módulos se importen entre sí en círculo: cada uno avisa "cambió algo" y app.js decide qué redibujar. */
 import { DB } from './db.js';
-import { num, p2, esc, cantR, diasDesde, ahora } from './util.js';
+import { num, p2, esc, cantR, diasDesde, ahora, hoy } from './util.js';
 
 export const cfg = () => DB.data.config;
 export const find = id => DB.data.ordenes.find(x => x.id === id);   // incluye las de la papelera (se usan al recuperarlas)
@@ -17,6 +17,9 @@ export const saldo = o => {
 };
 export const costoRep = o => o.repuestos.reduce((a, r) => a + num(r.costo) * cantR(r), 0);
 export const alertaDias = () => parseInt(cfg().dias_alerta) || 7;
+/* Tareas/recordatorios de una orden: las pendientes y las que ya vencieron (para la lista y los avisos). */
+export const tareasPend = o => (o.tareas || []).filter(t => !t.hecho);
+export const tareasVencidas = o => { const h = hoy(); return tareasPend(o).filter(t => t.f && t.f < h); };
 /* Listo para retirar y el cliente todavía no vino: se usa en la lista, el contador y las estadísticas. */
 export const esViejo = o => o.estado === 'Listo para retirar' && diasDesde(o.estado_fecha || o.creada) > alertaDias();
 

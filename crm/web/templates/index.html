@@ -126,6 +126,16 @@
     </div>
   </fieldset>
 
+  <fieldset><legend>Tareas y recordatorios</legend>
+    <label>Pendientes de esta orden (con fecha límite opcional)</label>
+    <div id="fTareas" class="movs"></div>
+    <div class="acts">
+      <input id="tTarTxt" placeholder="Ej.: pedir repuesto, avisar al cliente…">
+      <input id="tTarFec" type="date" title="Fecha límite (opcional)">
+      <button type="button" id="bTarAdd">+ Agregar tarea</button>
+    </div>
+  </fieldset>
+
   <fieldset><legend>Diagnóstico y dinero</legend>
     <label>Plantilla de diagnóstico</label><select id="fPl"></select>
     <label>Diagnóstico técnico (se envía junto al presupuesto)</label><textarea id="fDx"></textarea>
@@ -160,6 +170,12 @@
     <label>Firma de retiro (al entregar el equipo)</label>
     <canvas id="fFirma2" width="360" height="120"></canvas>
     <div class="acts"><button type="button" id="bFirma2Clr">Borrar firma</button></div>
+  </fieldset>
+
+  <fieldset><legend>Adjuntos</legend>
+    <label>Documentos o archivos extra (PDF, Word/Excel, ZIP, imágenes… hasta 15 MB cada uno)</label>
+    <input id="fAdj" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.zip,.txt,.csv,image/*">
+    <div id="fAdjList" class="movs"></div>
   </fieldset>
 
   <fieldset id="fsHist"><legend>Historial</legend><div id="fHist" class="mut"></div></fieldset>
@@ -222,6 +238,11 @@
     <label>Stock y mínimo de cada repuesto. La disponibilidad se calcula sola: stock menos lo que están usando las órdenes activas.</label>
     <div id="cInvList"></div>
     <div class="acts"><button type="button" id="bInvAdd">+ Repuesto al inventario</button><span id="cInvAlerta" class="mut"></span></div>
+  </fieldset>
+  <fieldset id="cAud"><legend>Auditoría (solo administrador)</legend>
+    <label>Quién hizo qué y cuándo: ingresos, cambios de configuración, usuarios, órdenes borradas y respaldos.</label>
+    <div id="cAudList" class="movs"></div>
+    <div class="acts"><button type="button" id="bAudVer">🔄 Ver / actualizar</button><span id="cAudMsg" class="mut"></span></div>
   </fieldset>
   <fieldset><legend>Permisos y privacidad (solo administrador)</legend>
     <label class="inl"><input id="cOcultarImp" type="checkbox"> Ocultar importes (monto, seña, pagado) a los técnicos en la app</label>

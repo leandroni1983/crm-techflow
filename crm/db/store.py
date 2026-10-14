@@ -136,6 +136,18 @@ class Store:
             for k, v in d.items():
                 t.run("INSERT INTO config(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (k, str(v)))
 
+    # ---- auditoría global (quién hizo qué y cuándo)
+    def audit_add(self, usuario, accion, detalle=""):
+        with self.tx() as t:
+            t.run("INSERT INTO auditoria(id, fecha, usuario, accion, detalle) VALUES(?,?,?,?,?)",
+                  (os.urandom(10).hex(), now_iso(), str(usuario or "")[:60], str(accion or "")[:60], str(detalle or "")[:600]))
+            # La tabla no crece sin límite: se conservan los últimos 2000 movimientos.
+            t.run("DELETE FROM auditoria WHERE id NOT IN (SELECT id FROM auditoria ORDER BY fecha DESC LIMIT 2000)")
+
+    def audit_all(self, limit=300):
+        with self.tx() as t:
+            return t.all("SELECT fecha, usuario, accion, detalle FROM auditoria ORDER BY fecha DESC LIMIT ?", (max(1, int(limit)),))
+
     # ---- órdenes
     def orders_all(self):
         with self.tx() as t: return [row_to_order(r) for r in t.all("SELECT * FROM ordenes ORDER BY seq DESC")]

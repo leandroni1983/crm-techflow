@@ -167,7 +167,9 @@ def make_handler(app):
                 if not user: return self._send(401, {"error": "login"})
                 data = media.read(p)
                 if data is None: return self._send(404, {"error": "not found"})
-                return self._send(200, data, "image/jpeg", {"Cache-Control": "private, max-age=31536000, immutable"})
+                cab = {"Cache-Control": "private, max-age=31536000, immutable"}
+                if not media.inline(p): cab["Content-Disposition"] = 'attachment; filename="%s"' % os.path.basename(p)
+                return self._send(200, data, media.tipo(p), cab)
             if p.startswith("/seguimiento/"):
                 # Portal del cliente: sin login, pero con un link firmado que solo sirve para su propia orden.
                 if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Probá en un rato."})
@@ -189,18 +191,25 @@ def make_handler(app):
                 ocultar = user["rol"] != "admin" and str(cfg.get("ocultar_importes","")).lower() in ("1","true","si","sí","yes")
                 if ocultar:
                     ordenes = [{**o, "monto": "", "sena": "", "pagado": "", "pagos": []} for o in ordenes]
-                return self._json_etag({"ordenes": ordenes, "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
+                return self._json_etag({"ordenes": ordenes, "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": {**svc.status(), "sello": svc.sello()}})
             if p == "/api/resumen":
                 # Agregados del panel: se calculan acá (la base es mucho más rápida que el celular).
                 q = parse_qs(u.query)
                 desde, hasta, tz = q.get("desde", [""])[0], q.get("hasta", [""])[0], q.get("tz", [""])[0]
                 return self._json_etag(resumen_datos(svc.orders(), svc.config(), desde, hasta, tz), f"{desde}|{hasta}|{tz}")
-            if p == "/api/estado": return self._send(200, svc.status())
+            if p == "/api/estado": return self._send(200, {**svc.status(), "sello": svc.sello()})
+            if p == "/api/auditoria":
+                # Bitácora global de acciones (solo el administrador ve quién hizo qué).
+                if user["rol"] != "admin": return self._send(403, {"error": "Solo el administrador"})
+                try: limit = int(parse_qs(u.query).get("limit", ["300"])[0])
+                except (TypeError, ValueError): limit = 300
+                return self._send(200, {"movimientos": svc.auditoria(min(max(limit, 1), 1000))})
             if p == "/api/respaldo":
                 # Respaldo completo de la base en un archivo JSON (solo el administrador).
                 if user["rol"] != "admin": return self._send(403, {"error": "Solo el administrador"})
                 if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Esperá un momento."})
                 body = json.dumps(backup_dump(app.store), ensure_ascii=False, indent=1).encode()
+                svc.audit(user["nombre"], "respaldo", "Descargó un respaldo de la base")
                 return self._send(200, body, "application/json; charset=utf-8",
                                   {"Content-Disposition": 'attachment; filename="respaldo-%s.json"' % time.strftime("%Y%m%d")})
             if p == "/api/qr":
@@ -226,14 +235,20 @@ def make_handler(app):
             if p == "/api/logout":
                 t = self._token()
                 if t: svc.sess_del(token_hash(t))
+                u = self._user()
+                if u: svc.audit(u["nombre"], "sesión", "Cerró sesión")
                 return self._send(200, {"ok": True}, headers=self._cookie("", 0))
             user = self._user()
             if not user: return self._send(401, {"error": "login"})
-            if p == "/api/orden": return self._send(200, save_order(app, user, d))
+            if p == "/api/orden":
+                r = save_order(app, user, d)
+                svc.audit(user["nombre"], "orden", "Guardó la orden N° %s (%s)" % (r["seq"], str(d.get("cliente", ""))[:80]))
+                return self._send(200, r)
             if p == "/api/config":
                 if user["rol"] != "admin" and any(k in ADMIN_CONFIG_KEYS for k in d):
                     return self._send(403, {"error": "Solo el administrador puede editar esa configuración"})
                 svc.config_set({k: str(v) for k, v in d.items() if k != "pin"})
+                svc.audit(user["nombre"], "config", "Cambió: " + ", ".join(sorted(k for k in d if k != "pin")))
                 return self._send(200, {"ok": True})
             if p == "/api/config/renombrar":
                 # Renombra una categoría ya usada por las órdenes (tipo de falla o de equipo) en todas ellas.
@@ -242,7 +257,9 @@ def make_handler(app):
                 if clave not in ("fallas", "equipos") or not de or not a: return self._send(400, {"error": "Faltan datos para renombrar"})
                 if len(a) > 60: return self._send(400, {"error": "El nombre nuevo no puede pasar de 60 caracteres"})
                 if a == de: return self._send(200, {"ok": True, "cambiadas": 0})
-                return self._send(200, {"ok": True, "cambiadas": svc.categoria_renombrar(clave, de, a, str(d.get("lista", "")))})
+                n = svc.categoria_renombrar(clave, de, a, str(d.get("lista", "")))
+                svc.audit(user["nombre"], "config", "Renombró %s: %s → %s (%d órdenes)" % (clave, de, a, n))
+                return self._send(200, {"ok": True, "cambiadas": n})
             if p == "/api/comprobante":
                 if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Esperá un momento."})
                 pdf = pdf_comprobante(d, media)
@@ -256,6 +273,7 @@ def make_handler(app):
                 r = svc.user_get(user["nombre"])
                 if not r or not check_pw(str(d.get("actual", "")), r["hash"]): return self._send(400, {"error": "La contraseña actual no es correcta"})
                 svc.user_set_hash(user["nombre"], hash_pw(new)); svc.sess_del_others(user["nombre"], token_hash(self._token()))
+                svc.audit(user["nombre"], "cuenta", "Cambió su contraseña")
                 return self._send(200, {"ok": True})
             if p == "/api/usuarios":
                 if user["rol"] != "admin": return self._send(403, {"error": "Solo el administrador"})
@@ -263,6 +281,7 @@ def make_handler(app):
                 if not NAME_RE.match(name): return self._send(400, {"error": "Usuario: 3 a 30 caracteres (letras, números, . _ -)"})
                 if len(str(d.get("password", ""))) < 8: return self._send(400, {"error": "La contraseña debe tener al menos 8 caracteres"})
                 svc.user_add(name, hash_pw(str(d["password"])), rol)
+                svc.audit(user["nombre"], "usuarios", "Creó el usuario %s (%s)" % (name, rol))
                 return self._send(200, {"ok": True})
             self._send(404, {"error": "not found"})
 
@@ -275,9 +294,11 @@ def make_handler(app):
             if not ok:
                 log(f"Login rechazado desde {ip}: " + (f"el usuario '{name}' no existe" if not r else f"contraseña incorrecta para '{name}'"))
                 limiter.fail(ip)
+                svc.audit(name or "-", "login fallido", "Intento de ingreso desde %s" % ip)
                 return self._send(401, {"error": "Usuario o contraseña incorrectos"})
             limiter.ok(ip)
             token = secrets.token_urlsafe(32); svc.sess_add(token_hash(token), name, time.time() + st.session_days * 86400)
+            svc.audit(name, "sesión", "Ingresó desde %s" % ip)
             return self._send(200, {"ok": True}, headers=self._cookie(token, st.session_days * 86400))
 
         # ---------------- portal de seguimiento (POST sin sesión: aprueba/rechaza el presupuesto)
@@ -295,6 +316,7 @@ def make_handler(app):
             if decision not in ("aprobar", "rechazar"): return self._send(400, {"error": "Decisión inválida"})
             if o.get("presu_estado"): return self._send(200, {"ok": True, "estado": o["presu_estado"]})   # ya decidido: no se pisa
             decidir_presupuesto(app, o, decision, d.get("motivo", ""))
+            svc.audit("cliente", "portal", "El cliente %s el presupuesto de la orden N° %s" % ("aprobó" if decision == "aprobar" else "rechazó", o["seq"]))
             return self._send(200, {"ok": True, "estado": "Aprobado" if decision == "aprobar" else "Rechazado"})
 
         # ---------------- DELETE
@@ -307,12 +329,14 @@ def make_handler(app):
                 if user["rol"] != "admin" and str(cfg.get("perm_borrar_admin","")).lower() not in ("0","false","no"):
                     return self._send(403, {"error": "Para borrar de verdad hace falta ser administrador (los demás pueden mandarla a la papelera)."})
                 delete_order(app, self.path.rsplit("/", 1)[1])
+                svc.audit(user["nombre"], "orden", "Borró definitivamente la orden %s" % self.path.rsplit("/", 1)[1])
                 return self._send(200, {"ok": True})
             if self.path.startswith("/api/usuarios/"):
                 if user["rol"] != "admin": return self._send(403, {"error": "Solo el administrador"})
                 name = self.path.rsplit("/", 1)[1].lower()
                 if name == user["nombre"]: return self._send(400, {"error": "No podés borrar tu propio usuario"})
                 svc.user_del(name)
+                svc.audit(user["nombre"], "usuarios", "Borró el usuario %s" % name)
                 return self._send(200, {"ok": True})
             self._send(404, {"error": "not found"})
 
