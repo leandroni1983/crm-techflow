@@ -21,3 +21,15 @@ crm = ["web/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Lint: solo lo que detecta errores reales (nombres no definidos, imports sin usar...).
+# El estilo del proyecto es compacto a propósito, así que no se revisan reglas de formato.
+[tool.ruff]
+target-version = "py310"
+line-length = 200
+
+[tool.ruff.lint]
+select = ["F", "E9"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/e2e/run.py" = ["F401"]

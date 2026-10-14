@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Lint y pruebas (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]     # 3.10 es el mínimo soportado; 3.12 es el de la imagen Docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Instalar dependencias de desarrollo
+        run: pip install -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: python -m ruff check .
+      - name: Pruebas unitarias y de API
+        run: python -m unittest discover -s tests -t . -v
+
+  e2e:
+    name: Prueba de navegador (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          npm install -g playwright
+          npx playwright install --with-deps chromium
+      - name: Prueba de punta a punta
+        run: python tests/e2e/run.py
+      - name: Guardar el log del servidor si algo falla
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-logs
+          path: |
+            **/server.log
+          if-no-files-found: ignore

@@ -1,5 +1,7 @@
 # Solo para desarrollo. Las pruebas unitarias usan unittest (viene con Python), no hace falta nada más.
 -r requirements.txt
+# Revision de errores reales en el codigo (make lint)
+ruff
 # Opcional: permite probar la lectura de los códigos QR
 opencv-python-headless
 numpy

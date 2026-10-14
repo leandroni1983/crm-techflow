@@ -1,7 +1,7 @@
 VERSION := $(shell python3 -c "import crm; print(crm.__version__)")
 IMAGE ?= leandrocode/crmtech
 
-.PHONY: help run test e2e check-db build push clean
+.PHONY: help run test lint e2e check-db build push clean
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-z0-9-]+:.*## ' $(MAKEFILE_LIST) | sed -E 's/:.*## /|/' | awk -F'|' '{ printf "  make %-9s %s\n", $$1, $$2 }'
@@ -12,8 +12,11 @@ run: ## Arranca el servidor local (SQLite en ./data)
 test: ## Pruebas unitarias y de API (rápidas, sin navegador)
 	python3 -m unittest discover -s tests -t . -v
 
-e2e: ## Prueba de navegador (necesita Playwright, ver tests/e2e/run.sh)
-	bash tests/e2e/run.sh
+lint: ## Revisa errores reales del código (necesita ruff: pip install -r requirements-dev.txt)
+	python3 -m ruff check .
+
+e2e: ## Prueba de navegador (necesita Playwright: npm install -g playwright && npx playwright install chromium)
+	python3 tests/e2e/run.py
 
 check-db: ## Verifica conexión, migraciones y escritura de DATABASE_URL
 	python3 -m crm check-db

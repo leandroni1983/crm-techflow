@@ -22,10 +22,12 @@ Abrí `http://IP-DEL-SERVER:8000`. Más detalle (base en la nube, migrar tu `crm
 ```bash
 make run        # servidor local con SQLite en ./data (http://localhost:8000)
 make test       # 37 pruebas unitarias y de API (solo necesita Python)
-make e2e        # prueba de navegador con Playwright
+make lint       # revisa errores reales del código (ruff)
+make e2e        # prueba de navegador con Playwright (funciona en Windows, Linux y macOS)
 make help       # todos los comandos
 ```
 Sin Docker ni PostgreSQL alcanza con Python 3.10+. Para usar PostgreSQL: `pip install -r requirements.txt` y `DATABASE_URL=postgresql://...`.
+El proyecto usa [GitHub Actions](.github/workflows/ci.yml): en cada push corre el lint, las 37 pruebas y la prueba de navegador.
 
 ## Estructura
 

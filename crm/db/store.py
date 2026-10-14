@@ -3,7 +3,7 @@ DATABASE_URL elige el motor:
     postgresql://usuario:clave@host:5432/base?sslmode=require
     sqlite:////ruta/absoluta/crm.db
 """
-import json, os, queue, sqlite3, threading, time
+import json, os, queue, sqlite3, time
 from contextlib import contextmanager
 from urllib.parse import urlsplit, urlunsplit
 

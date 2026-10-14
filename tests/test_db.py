@@ -1,5 +1,5 @@
 """Capa de datos: migraciones, base vieja, protección de versión, secuencia e historial."""
-import json, os, shutil, sqlite3, tempfile, unittest
+import os, shutil, sqlite3, tempfile, unittest
 
 from crm.db import LATEST, SqliteStore, norm_order
 from crm.media import MediaStore

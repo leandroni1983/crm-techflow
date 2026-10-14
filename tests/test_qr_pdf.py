@@ -1,5 +1,5 @@
 """QR y PDF. La lectura del QR necesita OpenCV (opcional): sin él, esa prueba se omite."""
-import os, shutil, tempfile, unittest
+import shutil, tempfile, unittest
 
 from crm.media import MediaStore
 from crm.pdf import pdf_comprobante

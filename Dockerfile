@@ -24,8 +24,10 @@ RUN mkdir -p /data
 VOLUME /data
 EXPOSE 8000
 
-# /health responde 200 mientras la app viva (aunque la base esté caída: sigue funcionando en modo local)
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+# /health responde 200 mientras la app viva (aunque la base esté caída: sigue funcionando en modo local).
+# Ojo: el servidor HTTP solo empieza a escuchar cuando termina de conectar y migrar la base, o sea que
+# start-period tiene que cubrir la espera de arranque (data-service reintenta hasta 60 s).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=75s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8000'), timeout=3)"
 
 # Arranca como root solo para ajustar permisos de /data y luego baja a PUID/PGID (ver crm/bootstrap.py)
