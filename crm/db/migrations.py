@@ -31,6 +31,11 @@ def m3_falla_tipo(t):
     if "falla_tipo" not in _cols(t, "ordenes"): t.run("ALTER TABLE ordenes ADD COLUMN falla_tipo TEXT")
 
 
+def m4_equipo_tipo(t):
+    """Agrega el tipo de equipo (categoría) para la estadística de "Equipos más frecuentes"."""
+    if "equipo_tipo" not in _cols(t, "ordenes"): t.run("ALTER TABLE ordenes ADD COLUMN equipo_tipo TEXT")
+
+
 MIGRATIONS = [(1, "esquema base", m1_esquema), (2, "secuencia de números de orden", m2_secuencia),
-              (3, "tipo de falla", m3_falla_tipo)]
+              (3, "tipo de falla", m3_falla_tipo), (4, "tipo de equipo", m4_equipo_tipo)]
 LATEST = MIGRATIONS[-1][0]

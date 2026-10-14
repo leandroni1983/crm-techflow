@@ -6,6 +6,7 @@ const DEFAULTS = {
   pdfAncho: '210', pdfAlto: '148', et_ancho: '70', et_alto: '40', garantia_dias: '90', dias_alerta: '7',
   checklist_items: 'Enciende, Con batería, Con cargador, Pantalla rota, Golpes visibles, Con disco / memoria',
   fallas: 'No enciende\nNo da imagen / no arranca\nNo carga / batería\nLíquido / mojado\nPantalla rota\nTeclado / botones\nLento / virus / sistema\nNo conecta (WiFi/red)\nLimpieza / mantenimiento\nOtro',
+  equipos: 'Celular\nNotebook\nPC de escritorio\nTablet\nImpresora\nMonitor\nTV\nConsola\nElectrodoméstico\nOtro',
   plantillas: 'Limpieza y pasta térmica|Limpieza interna y cambio de pasta térmica|15000\nFormateo e instalación|Formateo e instalación del sistema operativo y programas|20000',
   msg: 'Hola {cliente}! Te escribimos de {taller}. Tu orden de servicio es la N° {numero} ({equipo}). Estado actual: {estado}.',
   msgP: 'Hola {cliente}! Te escribimos de {taller} por tu orden N° {numero} ({equipo}).\n\nDiagnóstico: {diagnostico}\n\nPresupuesto: ${presupuesto}\n\nSi estás de acuerdo, respondé este mensaje para avanzar con la reparación.',
@@ -18,7 +19,7 @@ const DEFAULTS = {
 };
 
 const ordenVacia = () => ({
-  cliente: '', tel: '', direccion: '', equipo: '', marca: '', color: '', serie: '', accesorios: '', fisico: '', deteriorado: '',
+  cliente: '', tel: '', direccion: '', equipo: '', equipo_tipo: '', marca: '', color: '', serie: '', accesorios: '', fisico: '', deteriorado: '',
   clave: '', falla_tipo: '', problema: '', diagnostico: '', monto: '', autoriza: '', sena: '', pagado: '', estado: 'Recibido', estado_fecha: '',
   hora: '', entrega_est: '', entrega_fecha: '', garantia_fab: '', observ: '', firma: '', firma_entrega: '', tecnico: '',
   checklist: [], repuestos: [], historial: [], imagenes: []

@@ -211,6 +211,18 @@ class DataService:
             self.c_cfg.update({k: str(v) for k, v in d.items()}); self._outbox_add("config", "", d)
         self.wake.set()
 
+    # ------------------------------------------------------------ mantenimiento (necesita conexión)
+    CAT_COLS = {"fallas": "falla_tipo", "equipos": "equipo_tipo"}
+
+    def categoria_renombrar(self, clave, de, a, lista):
+        """Cambia el nombre de una categoría usada por las órdenes (tipo de falla o de equipo) y guarda la lista
+        nueva de configuración. Necesita conexión: son muchos cambios de golpe y conviene que sean atómicos."""
+        col = self.CAT_COLS.get(clave)
+        if not col: raise ValueError("clave no permitida")
+        n = self._need(lambda: self.remote.categoria_renombrar(clave, col, de, a, lista))
+        self.refresh_cache()
+        return n
+
     # ------------------------------------------------------------ bloque de números de orden
     def _load_block(self):
         try:

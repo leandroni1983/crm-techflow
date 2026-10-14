@@ -1,7 +1,7 @@
 """Modelo de datos: columnas de la orden y funciones para normalizarla. Sin dependencias de base de datos."""
 import json, time
 
-TEXT_COLS = ["cliente", "tel", "direccion", "equipo", "marca", "color", "serie", "accesorios", "fisico", "deteriorado",
+TEXT_COLS = ["cliente", "tel", "direccion", "equipo", "equipo_tipo", "marca", "color", "serie", "accesorios", "fisico", "deteriorado",
              "clave", "falla_tipo", "problema", "diagnostico", "monto", "autoriza", "sena", "pagado", "estado", "estado_fecha", "hora",
              "entrega_est", "entrega_fecha", "garantia_fab", "observ", "firma", "firma_entrega", "tecnico"]
 JSON_COLS = ["checklist", "repuestos", "historial", "imagenes"]

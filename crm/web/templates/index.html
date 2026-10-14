@@ -79,6 +79,7 @@
   </fieldset>
 
   <fieldset><legend>Equipo</legend>
+    <label>Tipo de equipo (para las estadísticas)</label><select id="fEt"></select>
     <div class="g2">
       <div><label>Equipo</label><input id="fEq" placeholder="Notebook, cortadora..."></div>
       <div><label>Marca</label><input id="fMa"></div>
@@ -184,6 +185,12 @@
   <fieldset id="cFall"><legend>Tipos de falla (solo administrador)</legend>
     <label>Uno por línea (se usan en el desplegable de la orden y en “Fallas más comunes”)</label>
     <textarea id="cFallas" style="min-height:110px"></textarea>
+    <div id="cFallRen" class="ren"></div>
+  </fieldset>
+  <fieldset id="cEqu"><legend>Tipos de equipo (solo administrador)</legend>
+    <label>Uno por línea (se usan en el desplegable de la orden y en “Equipos más frecuentes”)</label>
+    <textarea id="cEquipos" style="min-height:110px"></textarea>
+    <div id="cEquRen" class="ren"></div>
   </fieldset>
   <fieldset><legend>Mensajes de WhatsApp</legend>
     <label>General — {cliente} {numero} {equipo} {estado} {taller}</label><textarea id="cMsg" style="min-height:70px"></textarea>

@@ -43,6 +43,38 @@ function drawFallas() {
   $('fFt').innerHTML = '<option value="">— sin clasificar —</option>' + L.map(f => `<option>${esc(f)}</option>`).join('');
   if (cur && L.includes(cur)) $('fFt').value = cur;
 }
+/* Tipos de equipo: misma idea que las fallas (categoría fija que se cuenta en "Equipos más frecuentes",
+   en vez de contar el texto libre de "Equipo", que junta "notebook", "notebook lenovo" y "nb" por separado).
+   El administrador puede editar la lista desde Configuración; esto es solo el valor por defecto. */
+const EQUIPOS_DEF = ['Celular', 'Notebook', 'PC de escritorio', 'Tablet', 'Impresora', 'Monitor', 'TV', 'Consola', 'Electrodoméstico', 'Otro'];
+function listaEquipos(txt) {
+  const L = String(txt || '').split('\n').map(s => s.trim()).filter(Boolean);
+  return L.length ? L : EQUIPOS_DEF;
+}
+const equipos = () => listaEquipos(cfg().equipos);
+/* Sugiere el tipo de equipo según lo escrito en "Equipo"; el primero que coincide gana (el técnico lo puede cambiar). */
+const EQUIPO_RX = [
+  ['Notebook', /note|lap(top)?|macbook|ultrabook/i],
+  ['Tablet', /tablet|\bipad\b|\btab\b/i],
+  ['Celular', /celu|smart ?phone|\bphone\b|m[oó]vil|iphone|xiamo|samsung|moto [gez]/i],
+  ['Impresora', /impres|printer|l[aá]ser|multifunci[oó]n/i],
+  ['Monitor', /\bmonitor\b|pantalla led|pantalla lg/i],
+  ['Consola', /play ?station|\bps[2-5]\b|xbox|nintendo|switch|consola/i],
+  ['Electrodoméstico', /lavarrop|heladera|microondas|licuadora|ventilador|aire acond|electrodom/i],
+  ['TV', /\btv\b|televisor|smart ?tv/i],
+  ['PC de escritorio', /\bpc\b|escritorio|torre|all.?in.?one|\baio\b/i]
+];
+function detectarEquipo(txt) {
+  const s = String(txt || '').toLowerCase();
+  if (s.trim().length < 3) return '';
+  const hit = EQUIPO_RX.find(([, rx]) => rx.test(s));
+  return hit ? hit[0] : '';
+}
+function drawEquipos() {
+  const cur = $('fEt').value, L = equipos();
+  $('fEt').innerHTML = '<option value="">— sin clasificar —</option>' + L.map(e => `<option>${esc(e)}</option>`).join('');
+  if (cur && L.includes(cur)) $('fEt').value = cur;
+}
 const nombreEq = o => [o.equipo, o.marca].filter(Boolean).join(' ');
 const costoRep = o => o.repuestos.reduce((a, r) => a + num(r.costo), 0);
 const diasDesde = iso => iso ? (Date.now() - new Date(iso).getTime()) / 864e5 : 0;
@@ -229,7 +261,7 @@ function card(o) {
   const g = garantiaHasta(o), tipo = tipoMsg(o), costos = costoRep(o), viejo = QUICK.viejos[1](o);
   const dinero = [num(o.monto) && 'Presupuesto: ' + money(num(o.monto)), num(o.sena) && 'Seña: ' + money(num(o.sena)),
     num(o.monto) && (o.pagado ? '✅ Pagado' : 'Saldo: ' + money(saldo(o)))].filter(Boolean).join(' · ');
-  const datos = [o.serie && 'S/N ' + esc(o.serie), o.color && esc(o.color), o.accesorios && 'Accesorios: ' + esc(o.accesorios), o.fisico && 'Físico: ' + esc(o.fisico)].filter(Boolean).join(' · ');
+  const datos = [o.equipo_tipo && 'Tipo: ' + esc(o.equipo_tipo), o.serie && 'S/N ' + esc(o.serie), o.color && esc(o.color), o.accesorios && 'Accesorios: ' + esc(o.accesorios), o.fisico && 'Físico: ' + esc(o.fisico)].filter(Boolean).join(' · ');
   const dias = viejo ? ' · +' + Math.floor(diasDesde(o.estado_fecha || o.creada)) + ' días' : '';
   return `<div class="ord" data-id="${o.id}">
     <button type="button" class="ord-line" data-a="toggle" data-id="${o.id}" aria-expanded="false">
@@ -269,7 +301,7 @@ function render() {
   drawChips();
   const q = $('q').value.toLowerCase(), f = $('fs').value, tf = $('fT').value, qf = quick ? QUICK[quick][1] : () => true;
   const L = DB.data.ordenes.filter(o => (!f || o.estado === f) && (!tf || o.tecnico === (tf === '@yo' ? yo() : tf)) && qf(o) &&
-    (numOrden(o) + o.cliente + nombreEq(o) + o.tel + o.serie).toLowerCase().includes(q));
+    (numOrden(o) + o.cliente + nombreEq(o) + (o.equipo_tipo || '') + o.tel + o.serie).toLowerCase().includes(q));
   $('list').innerHTML = L.length ? L.map(card).join('') : '<div class="empty">No hay órdenes para mostrar. Creá una con “+ Nueva orden”.</div>';
   if (abierta) { if ($('list').querySelector('.ord[data-id="' + CSS.escape(abierta) + '"]')) expandir(abierta, true); else abierta = null; }
   $('ordCount').textContent = `(${L.length}${L.length !== DB.data.ordenes.length ? ' de ' + DB.data.ordenes.length : ''})`;
@@ -320,7 +352,7 @@ function drawTec() {
 }
 
 /* ============ DIÁLOGO DE ORDEN ============ */
-const CAMPOS = { cliente: 'fCli', tel: 'fTel', direccion: 'fDir', equipo: 'fEq', marca: 'fMa', color: 'fCo', serie: 'fSe', accesorios: 'fAc',
+const CAMPOS = { cliente: 'fCli', tel: 'fTel', direccion: 'fDir', equipo: 'fEq', equipo_tipo: 'fEt', marca: 'fMa', color: 'fCo', serie: 'fSe', accesorios: 'fAc',
   fisico: 'fFi', deteriorado: 'fDe', tecnico: 'fTe', clave: 'fCl', falla_tipo: 'fFt', garantia_fab: 'fGf', problema: 'fPr', observ: 'fOb', estado: 'fSt', hora: 'fHo',
   entrega_est: 'fEe', autoriza: 'fAu', diagnostico: 'fDx', monto: 'fMo', sena: 'fSn', entrega_fecha: 'fEf' };
 let editing = null, tmpImgs = [], tmpRep = [], tmpLogo = '';
@@ -373,14 +405,14 @@ function mkPad(id) {
 const pad1 = mkPad('fFirma'), pad2 = mkPad('fFirma2');
 $('bFirmaClr').onclick = () => pad1.limpiar(); $('bFirma2Clr').onclick = () => pad2.limpiar();
 
-let ftManual = false;   // el técnico eligió el tipo de falla a mano: no lo pisamos con la sugerencia
+let ftManual = false, etManual = false;   // el técnico eligió el tipo a mano: no lo pisamos con la sugerencia
 function openOrd(o) {
   editing = o || null;
   const b = o || { ...ordenVacia(), tecnico: yo(), hora: `${p2(new Date().getHours())}:${p2(new Date().getMinutes())}` };
   $('dTitle').textContent = o ? 'Editar ' + numOrden(o) : 'Nueva orden';
   $('fTe').innerHTML = opcTec(b.tecnico);
   for (const [k, id] of Object.entries(CAMPOS)) $(id).value = b[k] || '';
-  ftManual = !!b.falla_tipo;
+  ftManual = !!b.falla_tipo; etManual = !!b.equipo_tipo;
   $('fSt').value = b.estado || ESTADOS[0]; $('fPg').checked = !!b.pagado;
   tmpImgs = [...b.imagenes]; tmpRep = b.repuestos.map(r => ({ ...r }));
   drawChk(b.checklist); drawRep(); drawImgs(); $('fImg').value = '';
@@ -394,6 +426,8 @@ $('bNew').onclick = () => openOrd();
 $('bNew2').onclick = () => openOrd();
 $('fFt').onchange = () => { ftManual = true; };
 $('fPr').oninput = () => { if (ftManual) return; const c = detectarFalla($('fPr').value); if (c && fallas().includes(c)) $('fFt').value = c; };
+$('fEt').onchange = () => { etManual = true; };
+$('fEq').oninput = () => { if (etManual) return; const c = detectarEquipo($('fEq').value); if (c && equipos().includes(c)) $('fEt').value = c; };
 $('bCan').onclick = () => $('dOrd').close();
 $('fImg').onchange = async e => { for (const f of e.target.files) tmpImgs.push(await compress(f)); drawImgs(); };
 $('fImgs').onclick = e => { if (e.target.dataset.x) { tmpImgs.splice(+e.target.dataset.x, 1); drawImgs(); } };
@@ -437,14 +471,15 @@ $('bSave').onclick = async () => {
 /* ============ CONFIGURACIÓN ============ */
 const CFG = { taller: 'cNom', taller_datos: 'cDat', prefijo: 'cPre', pais: 'cPais', pdfAncho: 'cAncho', pdfAlto: 'cAlto', et_ancho: 'cEtA',
   et_alto: 'cEtH', garantia_dias: 'cGar', dias_alerta: 'cAle', checklist_items: 'cChk', plantillas: 'cPla', msg: 'cMsg', msgP: 'cMsgP',
-  msgListo: 'cMsgL', msgPDF: 'cMsgPDF', msgC: 'cMsgC', condiciones: 'cCond', msgEntrega: 'cMsgE', condiciones_entrega: 'cCondE', fallas: 'cFallas' };
-const ADMIN_CFG = ['fallas'];   // claves de configuración que solo puede cambiar el administrador
+  msgListo: 'cMsgL', msgPDF: 'cMsgPDF', msgC: 'cMsgC', condiciones: 'cCond', msgEntrega: 'cMsgE', condiciones_entrega: 'cCondE', fallas: 'cFallas',
+  equipos: 'cEquipos' };
+const ADMIN_CFG = ['fallas', 'equipos'];   // claves de configuración que solo puede cambiar el administrador
 const esAdmin = () => DB.api && DB.usuario?.rol === 'admin';
 function prevLogo() { const i = $('cLogoPrev'); i.style.display = tmpLogo ? 'block' : 'none'; i.src = tmpLogo || ''; }
 $('bCfg').onclick = () => {
   const c = cfg(); for (const [k, id] of Object.entries(CFG)) $(id).value = c[k] ?? '';
   $('cLogoSolo').checked = c.logo_solo === '1'; tmpLogo = c.logo || ''; prevLogo();
-  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); $('dCfg').showModal();
+  $('cLogo').value = ''; $('cPwA').value = ''; $('cPwN').value = ''; cuentas(); drawRenombres(); $('dCfg').showModal();
 };
 $('cLogo').onchange = async e => { if (e.target.files[0]) { tmpLogo = await compress(e.target.files[0], 400, .85); prevLogo(); } };
 $('cLogoDel').onclick = () => { tmpLogo = ''; $('cLogo').value = ''; prevLogo(); };
@@ -453,11 +488,12 @@ $('cSave').onclick = async () => {
   const nc = { ...cfg() };
   for (const [k, id] of Object.entries(CFG)) nc[k] = $(id).value;
   if (nc.fallas) nc.fallas = listaFallas(nc.fallas).join('\n');
+  if (nc.equipos) nc.equipos = listaEquipos(nc.equipos).join('\n');
   for (const k of ADMIN_CFG) if (!esAdmin()) delete nc[k];   // el técnico no manda las claves de administrador
   nc.pais = nc.pais.replace(/\D/g, '') || '549';
   for (const k of ['pdfAncho', 'pdfAlto', 'et_ancho', 'et_alto', 'garantia_dias', 'dias_alerta']) nc[k] = nc[k] || DEFAULTS[k];
   nc.logo = tmpLogo; nc.logo_solo = $('cLogoSolo').checked ? '1' : '0';
-  if (await DB.saveConfig(nc)) { $('dCfg').close(); drawFallas(); refresh(); drawModo(); }
+  if (await DB.saveConfig(nc)) { $('dCfg').close(); drawFallas(); drawEquipos(); refresh(); drawModo(); }
 };
 
 /* ---- cuenta y usuarios ---- */
@@ -468,6 +504,7 @@ async function api(path, method, body) {
 async function cuentas() {
   const u = DB.usuario; $('cQuien').textContent = DB.api ? `Sesión: ${u?.nombre} (${u?.rol === 'admin' ? 'administrador' : 'técnico'})` : 'Sin servidor: no hay usuarios.';
   const admin = DB.api && u?.rol === 'admin'; $('cUsr').style.display = admin ? '' : 'none'; $('cFall').style.display = admin ? '' : 'none';
+  $('cEqu').style.display = admin ? '' : 'none';
   if (!admin) return;
   try {
     const L = await api('/api/usuarios', 'GET'); DB.tecnicos = L.map(x => x.nombre); drawTec();
@@ -487,6 +524,33 @@ $('cUsrList').onclick = async e => {
   try { await api('/api/usuarios/' + encodeURIComponent(n), 'DELETE'); cuentas(); } catch (x) { alert(x.message); }
 };
 
+/* ---- renombrar una categoría ya usada (actualiza también las órdenes viejas) ---- */
+const CAT_KEY = { fallas: 'falla_tipo', equipos: 'equipo_tipo' };
+const usadasCat = clave => [...new Set(DB.data.ordenes.map(o => (o[CAT_KEY[clave]] || '').trim()).filter(Boolean))];
+function drawRenombres() {
+  if (!esAdmin()) { $('cFallRen').innerHTML = ''; $('cEquRen').innerHTML = ''; return; }
+  for (const [clave, id] of [['fallas', 'cFallRen'], ['equipos', 'cEquRen']]) {
+    const L = usadasCat(clave);
+    $(id).innerHTML = L.length
+      ? '<div class="mut">Ya usados en órdenes: si le cambiás el nombre, se actualizan también esas órdenes.</div>' +
+        L.map(x => `<div class="kv"><span>${esc(x)}</span><button type="button" data-ren="${esc(x)}" data-clave="${clave}">Renombrar</button></div>`).join('')
+      : '';
+  }
+}
+async function renombrarCat(clave, de) {
+  const a = (prompt(`Nuevo nombre para “${de}”:`, de) || '').trim();
+  if (!a || a === de) return;
+  const ta = $(clave === 'fallas' ? 'cFallas' : 'cEquipos');
+  ta.value = (clave === 'fallas' ? listaFallas : listaEquipos)(ta.value).map(x => x === de ? a : x).join('\n');
+  try {
+    const r = await api('/api/config/renombrar', 'POST', { clave, de, a, lista: ta.value });
+    await DB.load(); drawFallas(); drawEquipos(); refresh(); drawRenombres();
+    alert(`Listo: se actualizaron ${r.cambiadas} orden(es).`);
+  } catch (e) { alert(e.message); }
+}
+$('cFallRen').onclick = e => { const b = e.target.closest('[data-ren]'); if (b) renombrarCat(b.dataset.clave, b.dataset.ren); };
+$('cEquRen').onclick = e => { const b = e.target.closest('[data-ren]'); if (b) renombrarCat(b.dataset.clave, b.dataset.ren); };
+
 /* ============ PANEL DE ESTADÍSTICAS Y EXPORTAR ============ */
 const ym = iso => { const d = new Date(iso); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}`; };
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -496,7 +560,7 @@ function topN(arr, n = 8) { const m = {}; arr.forEach(x => m[x] = (m[x] || 0) + 
 /* Columnas del detalle: las mismas que se exportan a Excel (CSV). tipo: 'txt' o 'money' */
 const COLS = [
   ['N° orden', numOrden, 'txt'], ['Fecha ingreso', fechaOrd, 'txt'], ['Cliente', o => o.cliente, 'txt'], ['Teléfono', o => o.tel, 'txt'],
-  ['Equipo', o => o.equipo, 'txt'], ['Marca', o => o.marca, 'txt'], ['N° de serie', o => o.serie, 'txt'], ['Estado', o => o.estado, 'txt'],
+  ['Equipo', o => o.equipo, 'txt'], ['Tipo de equipo', o => o.equipo_tipo, 'txt'], ['Marca', o => o.marca, 'txt'], ['N° de serie', o => o.serie, 'txt'], ['Estado', o => o.estado, 'txt'],
   ['Técnico', o => o.tecnico, 'txt'], ['Tipo de falla', o => o.falla_tipo, 'txt'], ['Falla', o => o.problema, 'txt'], ['Diagnóstico', o => o.diagnostico, 'txt'], ['Presupuesto', o => num(o.monto), 'money'],
   ['Seña', o => num(o.sena), 'money'], ['Pagado', o => o.pagado ? 'Sí' : 'No', 'txt'], ['Costo repuestos', costoRep, 'money'],
   ['Ganancia', o => num(o.monto) - costoRep(o), 'money'], ['Fecha entrega', o => fmtD(o.entrega_fecha), 'txt'],
@@ -586,6 +650,7 @@ function resumen() {
   const etiquetas = meses.map(m => { const [yy, mm] = m.split('-'); return MESES[+mm - 1] + ' ' + yy.slice(2); });
 
   const fallasCat = ing.map(o => (o.falla_tipo || '').trim() || 'Sin clasificar');
+  const equiposCat = ing.map(o => (o.equipo_tipo || '').trim() || 'Sin clasificar');
   const items = (arr, n) => topN(arr, n).map(([label, value]) => ({ label, value }));
 
   $('rOut').innerHTML =
@@ -606,7 +671,8 @@ function resumen() {
     <div class="grid2">
       <section class="pane"><h4>Por estado</h4>${dona(items(ing.map(o => o.estado), 8))}</section>
       <section class="pane"><h4>Órdenes por técnico</h4>${barrasH(items(ing.map(o => o.tecnico || '(sin asignar)'), 8))}</section>
-      <section class="pane"><h4>Equipos más frecuentes</h4>${barrasH(items(ing.map(nombreEq).filter(Boolean).map(s => s.toLowerCase()), 8))}</section>
+      <section class="pane"><h4>Equipos más frecuentes</h4>${barrasH(items(equiposCat, 8))}</section>
+      <section class="pane"><h4>Marcas más frecuentes</h4>${barrasH(items(ing.map(o => (o.marca || '').trim().toLowerCase()).filter(Boolean), 8))}</section>
       <section class="pane"><h4>Fallas más comunes</h4>${barrasH(items(fallasCat, 8))}</section>
     </div>`;
 }
@@ -624,7 +690,7 @@ function refresh() { render(); resumen(); }
   const d = new Date(); $('rMes').value = `${d.getFullYear()}-${p2(d.getMonth() + 1)}`;
   $('rMesW').style.display = $('rPer').value === 'mes' ? '' : 'none';
   if (await DB.load() === 'login') return;
-  drawFallas(); drawTec(); refresh(); drawModo();
+  drawFallas(); drawEquipos(); drawTec(); refresh(); drawModo();
 })();
 
 /* ============ PWA ============ */

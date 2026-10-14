@@ -23,13 +23,27 @@ class DbTest(unittest.TestCase):
         c.execute("INSERT INTO ordenes(id,seq,creada,cliente) VALUES('v1',7,'2026-01-01T00:00:00Z','Viejo')"); c.commit(); c.close()
         st = SqliteStore(p); st.migrate(); o = st.orders_all()[0]
         self.assertEqual((o["cliente"], o["seq"], o["checklist"]), ("Viejo", 7, []))
-        self.assertEqual(o["falla_tipo"], "")  # la columna nueva se agrega vacía
+        self.assertEqual(o["falla_tipo"], "")  # las columnas nuevas se agregan vacías
+        self.assertEqual(o["equipo_tipo"], "")
         self.assertEqual(st.next_seq(1), [8])  # la secuencia continúa después del mayor número
 
     def test_tipo_de_falla_se_guarda_y_vuelve(self):
         st = SqliteStore(os.path.join(self.tmp, "ft.db")); st.migrate()
         st.order_save(norm_order(order("x", falla_tipo="No carga / batería")), [])
         self.assertEqual(st.orders_all()[0]["falla_tipo"], "No carga / batería")
+
+    def test_renombrar_categoria_toca_ordenes_y_config(self):
+        st = SqliteStore(os.path.join(self.tmp, "ren.db")); st.migrate()
+        st.order_save(norm_order(order("a", falla_tipo="No enciende", equipo_tipo="Notebook")), [])
+        st.order_save(norm_order(order("b", falla_tipo="No enciende")), [])
+        st.order_save(norm_order(order("c", falla_tipo="Otro")), [])
+        self.assertEqual(st.categoria_renombrar("fallas", "falla_tipo", "No enciende", "No arranca", "No arranca\nOtro"), 2)
+        self.assertEqual(st.categoria_renombrar("equipos", "equipo_tipo", "Notebook", "Notebook / portátil", "Notebook / portátil"), 1)
+        por = {o["id"]: o for o in st.orders_all()}
+        self.assertEqual([por[k]["falla_tipo"] for k in ("a", "b", "c")], ["No arranca", "No arranca", "Otro"])
+        self.assertEqual(por["a"]["equipo_tipo"], "Notebook / portátil")
+        self.assertEqual(st.config_all()["fallas"], "No arranca\nOtro")
+        with self.assertRaises(ValueError): st.categoria_renombrar("fallas", "cliente; DROP TABLE ordenes", "x", "y", "z")
 
     def test_base_mas_nueva_que_el_programa_no_arranca(self):
         p = os.path.join(self.tmp, "f.db"); st = SqliteStore(p); st.migrate()

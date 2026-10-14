@@ -142,8 +142,39 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(t.post("/api/config", {"fallas": "Solo esta"})[0], 403)
         self.assertEqual(a.post("/api/config", {"fallas": "No enciende\nOtro"})[0], 200)
         self.assertEqual(a.get("/api/data")[1]["config"]["fallas"], "No enciende\nOtro")
+        # lo mismo para los tipos de equipo (lista aparte)
+        self.assertEqual(t.post("/api/config", {"equipos": "Solo este"})[0], 403)
+        self.assertEqual(a.post("/api/config", {"equipos": "Notebook\nCelular\nOtro"})[0], 200)
+        self.assertEqual(a.get("/api/data")[1]["config"]["equipos"], "Notebook\nCelular\nOtro")
         self.assertEqual(t.post("/api/config", {"taller": "Otro taller"})[0], 200)   # el resto de la config sí puede
         self.assertEqual(a.delete("/api/usuarios/tec1")[0], 200); self.assertEqual(t.get("/api/data")[0], 401)  # sus sesiones se cierran
+
+    def test_renombrar_categorias_actualiza_las_ordenes(self):
+        """Renombrar un tipo de falla o de equipo cambia también las órdenes que ya lo usaban (y solo el admin puede)."""
+        a = self.env.client(); a.login()
+        a.post("/api/orden", {"id": "ren1", "cliente": "Ana", "tel": "11", "equipo": "Notebook Lenovo", "marca": "Lenovo",
+                              "equipo_tipo": "Notebook", "falla_tipo": "No enciende"})
+        a.post("/api/usuarios", {"nombre": "tec-ren", "password": "clave-tec-1234", "rol": "tecnico"})
+        t = self.env.client(); t.login("tec-ren", "clave-tec-1234")
+        self.assertEqual(t.post("/api/config/renombrar", {"clave": "fallas", "de": "No enciende", "a": "No arranca", "lista": "No arranca"})[0], 403)
+        for malo in ({"clave": "fallas", "de": "No enciende"}, {"clave": "otra", "de": "x", "a": "y"},
+                     {"clave": "fallas", "de": "No enciende", "a": "x" * 61}):
+            self.assertEqual(a.post("/api/config/renombrar", malo)[0], 400, malo)
+        # renombrar el tipo de falla: se actualiza la orden vieja y la lista de configuración
+        code, r, _ = a.post("/api/config/renombrar", {"clave": "fallas", "de": "No enciende", "a": "No arranca", "lista": "No arranca\nOtro"})
+        self.assertEqual((code, r["cambiadas"]), (200, 1))
+        self.assertEqual(a.get("/api/data")[1]["config"]["fallas"], "No arranca\nOtro")
+        self.assertEqual(self._orden(a, "ren1")["falla_tipo"], "No arranca")
+        # renombrar el tipo de equipo
+        self.assertEqual(a.post("/api/config/renombrar", {"clave": "equipos", "de": "Notebook", "a": "Notebook / portátil", "lista": "Notebook / portátil"})[1]["cambiadas"], 1)
+        self.assertEqual(self._orden(a, "ren1")["equipo_tipo"], "Notebook / portátil")
+        # renombrar a lo mismo no toca nada, y un valor sin órdenes tampoco rompe
+        self.assertEqual(a.post("/api/config/renombrar", {"clave": "equipos", "de": "Notebook / portátil", "a": "Notebook / portátil", "lista": "x"})[1]["cambiadas"], 0)
+        self.assertEqual(a.post("/api/config/renombrar", {"clave": "fallas", "de": "No existe", "a": "Otro nombre", "lista": "Otro nombre"})[1]["cambiadas"], 0)
+        a.delete("/api/usuarios/tec-ren"); a.delete("/api/orden/ren1")
+
+    def _orden(self, c, oid):
+        return [o for o in c.get("/api/data")[1]["ordenes"] if o["id"] == oid][0]
 
     def test_cambio_de_contrasena_cierra_las_otras_sesiones(self):
         with Env() as e:

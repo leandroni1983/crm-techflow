@@ -173,6 +173,16 @@ class Store:
     def order_del(self, oid):
         with self.tx() as t: t.run("DELETE FROM ordenes WHERE id=?", (oid,))
 
+    def categoria_renombrar(self, clave, col, de, a, lista):
+        """Renombra una categoría (tipo de falla o de equipo) en TODAS las órdenes y guarda la lista nueva de
+        configuración, todo en la misma transacción. Devuelve cuántas órdenes cambiaron.
+        `col` se valida contra una lista fija: el nombre de la columna nunca viene del cliente."""
+        if col not in ("falla_tipo", "equipo_tipo"): raise ValueError("columna no permitida")
+        with self.tx() as t:
+            n = t.run(f"UPDATE ordenes SET {col}=?, actualizada=? WHERE {col}=?", (a, now_ms(), de)).rowcount
+            t.run("INSERT INTO config(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (clave, str(lista)))
+        return n
+
     def media_pending(self):
         """Órdenes de versiones viejas con fotos/firmas dentro de la base (dataURL)."""
         with self.tx() as t:

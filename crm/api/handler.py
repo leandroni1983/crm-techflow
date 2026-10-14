@@ -16,7 +16,7 @@ from ..service import NeedsDB, NoSeq
 WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 STATIC = os.path.realpath(os.path.join(WEB, "static"))
 PROTECTED_STATIC = {"js/app.js", "js/db.js"}  # el resto de /static es público (lo necesita la pantalla de login)
-ADMIN_CONFIG_KEYS = {"fallas"}  # claves de configuración que solo puede cambiar el administrador
+ADMIN_CONFIG_KEYS = {"fallas", "equipos"}  # claves de configuración que solo puede cambiar el administrador
 TYPES = {".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".png": "image/png",
          ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml"}
 NAME_RE = re.compile(r"^[a-z0-9_.-]{3,30}$")
@@ -195,6 +195,14 @@ def make_handler(app):
                     return self._send(403, {"error": "Solo el administrador puede editar esa configuración"})
                 svc.config_set({k: str(v) for k, v in d.items() if k != "pin"})
                 return self._send(200, {"ok": True})
+            if p == "/api/config/renombrar":
+                # Renombra una categoría ya usada por las órdenes (tipo de falla o de equipo) en todas ellas.
+                if user["rol"] != "admin": return self._send(403, {"error": "Solo el administrador"})
+                clave, de, a = str(d.get("clave", "")), str(d.get("de", "")).strip(), str(d.get("a", "")).strip()
+                if clave not in ("fallas", "equipos") or not de or not a: return self._send(400, {"error": "Faltan datos para renombrar"})
+                if len(a) > 60: return self._send(400, {"error": "El nombre nuevo no puede pasar de 60 caracteres"})
+                if a == de: return self._send(200, {"ok": True, "cambiadas": 0})
+                return self._send(200, {"ok": True, "cambiadas": svc.categoria_renombrar(clave, de, a, str(d.get("lista", "")))})
             if p == "/api/comprobante":
                 if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Esperá un momento."})
                 pdf = pdf_comprobante(d, media)
