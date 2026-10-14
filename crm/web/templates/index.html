@@ -19,6 +19,7 @@
     <h1>🛠️ Órdenes de servicio</h1>
     <div>
       <button id="bInst" hidden>📲 Instalar</button>
+      <button id="bCaja" title="Caja del día: arqueo de cobros">💰 Caja</button>
       <button id="bCsv" title="Exportar todas las órdenes a Excel (CSV)">📥 Excel</button>
       <button id="bCfg" title="Configuración">⚙️</button>
       <button class="pri" id="bNew">+ Nueva orden</button>
@@ -45,6 +46,7 @@
           </select>
         </label>
         <label class="inl" id="rMesW" style="display:none">Mes <input id="rMes" type="month"></label>
+        <button id="bOcultar" title="Oculta los precios del panel con asteriscos (ideal si alguien está mirando al lado)">🔒 Ocultar precios</button>
         <button id="rExcel" title="Descargar las órdenes del período a Excel (CSV)">📥 Excel del período</button>
       </div>
     </div>
@@ -60,6 +62,12 @@
   <div class="bar">
     <input id="q" placeholder="Buscar por N°, cliente, equipo, teléfono o falla…">
     <select id="fs"></select>
+    <select id="orden" title="Ordenar la lista">
+      <option value="recientes">Más recientes</option>
+      <option value="antiguos">Más antiguas</option>
+      <option value="prioridad">Prioridad</option>
+      <option value="deuda">Mayor deuda</option>
+    </select>
     <select id="fT" style="display:none"></select>
   </div>
   <div id="list"></div>
@@ -108,7 +116,10 @@
       <div><label>Estado</label><select id="fSt"></select></div>
       <div><label>Hora de recepción</label><input id="fHo" type="time"></div>
     </div>
-    <label>Técnico asignado</label><select id="fTe"></select>
+    <div class="g2">
+      <div><label>Técnico asignado</label><select id="fTe"></select></div>
+      <div><label>Prioridad</label><select id="fPri"><option value="Normal">Normal</option><option value="Alta">Alta</option><option value="Baja">Baja</option></select></div>
+    </div>
     <div class="g2">
       <div><label>Fecha estimada de entrega</label><input id="fEe" type="date"></div>
       <div><label>Reparación directa hasta ($)</label><input id="fAu" type="number" min="0"></div>
@@ -125,6 +136,15 @@
     <div class="g2">
       <div><label>Fecha de entrega real (inicia la garantía)</label><input id="fEf" type="date"></div>
       <div><label>&nbsp;</label><label class="inl"><input id="fPg" type="checkbox"> Pagado en su totalidad</label></div>
+    </div>
+    <label>Pagos recibidos (además de la seña)</label>
+    <div id="fPagos" class="movs"></div>
+    <div class="acts">
+      <input id="pMon" type="number" min="0" placeholder="Monto" style="width:110px">
+      <select id="pMed"><option>Efectivo</option><option>Transferencia</option><option>Tarjeta</option><option>Otro</option></select>
+      <input id="pNota" placeholder="Nota (opcional)">
+      <button type="button" id="bPago">+ Registrar pago</button>
+      <span id="fPagoTot" class="mut"></span>
     </div>
     <label>Repuestos y costos (interno)</label>
     <div id="fRep"></div>
@@ -203,6 +223,10 @@
     <div id="cInvList"></div>
     <div class="acts"><button type="button" id="bInvAdd">+ Repuesto al inventario</button><span id="cInvAlerta" class="mut"></span></div>
   </fieldset>
+  <fieldset><legend>Permisos y privacidad (solo administrador)</legend>
+    <label class="inl"><input id="cOcultarImp" type="checkbox"> Ocultar importes (monto, seña, pagado) a los técnicos en la app</label>
+    <label class="inl"><input id="cPermBorrar" type="checkbox" checked> Requerir administrador para borrar definitivamente (desmarcar para permitirlo a técnicos)</label>
+  </fieldset>
   <fieldset><legend>Mensajes de WhatsApp</legend>
     <label>Todos pueden usar {cliente} {numero} {equipo} {estado} {taller} {seguimiento} (el link privado donde el cliente ve cómo va la orden)</label>
     <label>General — {cliente} {numero} {equipo} {estado} {taller}</label><textarea id="cMsg" style="min-height:70px"></textarea>
@@ -244,6 +268,45 @@
   <div class="mut" id="srSub" style="margin:6px 0 10px"></div>
   <div id="srList"></div>
   <div class="acts" style="justify-content:flex-end;margin-top:14px"><button id="srCan">Cerrar</button></div>
+</dialog>
+
+<!-- ============ CAJA DEL DÍA ============ -->
+<dialog id="dCaja">
+  <h3 style="margin:0">💰 Caja del día</h3>
+  <div class="mut" id="cjaSub" style="margin:6px 0 10px">Arqueo de señas y pagos parciales registrados en la fecha elegida.</div>
+  <div class="acts">
+    <label class="inl">Día <input id="cjaDia" type="date"></label>
+    <button type="button" id="cjaHoy">Hoy</button>
+    <button type="button" id="cjaAyer">Ayer</button>
+    <button type="button" id="cjaCsv">📥 Excel del día</button>
+  </div>
+  <div id="cjaTot" class="caja-tot"></div>
+  <div id="cjaList"></div>
+  <div class="acts" style="justify-content:flex-end;margin-top:14px"><button id="cjaCan">Cerrar</button></div>
+</dialog>
+
+<!-- ============ MOVIMIENTOS DE INVENTARIO (KARDEX) ============ -->
+<dialog id="dMov">
+  <h3 style="margin:0">📦 Movimientos de <span id="dMovNom"></span></h3>
+  <div class="mut" id="dMovStock" style="margin:6px 0 10px"></div>
+  <div class="acts">
+    <select id="mTipo"><option value="entrada">Entrada (compra / devolución)</option><option value="ajuste">Ajuste (conteo físico)</option></select>
+    <input id="mCant" type="number" min="0" placeholder="Cantidad" style="width:110px">
+    <input id="mNota" placeholder="Nota (proveedor, motivo…)">
+    <button type="button" class="pri" id="bMovAdd">+ Agregar movimiento</button>
+  </div>
+  <div id="mList" class="movs"></div>
+  <div class="acts" style="justify-content:flex-end;margin-top:14px"><button id="mCan">Cerrar</button></div>
+</dialog>
+
+<!-- ============ FICHA DE CLIENTE ============ -->
+<dialog id="dCli">
+  <h3 style="margin:0" id="dCliTit">👤 Ficha del cliente</h3>
+  <div id="dCliBody"></div>
+  <div class="acts" style="justify-content:space-between;margin-top:14px">
+    <button type="button" id="dCliCsv">📥 Excel de sus órdenes</button>
+    <button id="dCliCan">Cerrar</button>
+  </div>
 </dialog>
 
 <datalist id="dlCli"></datalist>

@@ -77,6 +77,15 @@ label.inl{display:flex;gap:6px;align-items:center;color:var(--tx);margin-top:8px
 .paso .pt{width:22px;height:22px;border-radius:50%;border:1px solid var(--bd);display:flex;align-items:center;justify-content:center;font-size:12px;flex:none}
 .paso.hecho{color:var(--tx)}.paso.hecho .pt{background:var(--ac);border-color:var(--ac);color:#fff}
 .paso.ahora{font-weight:700;color:var(--tx)}
+/* Aprobación del presupuesto en el portal del cliente. */
+.aprob{margin:14px 0;padding:12px 13px;border:1px solid var(--bd);border-radius:var(--r);background:var(--card)}
+/* Movimientos de inventario (kardex) y pagos dentro de la orden. */
+.movs{display:flex;flex-direction:column;gap:2px;margin:4px 0}
+.movs .kv{padding:3px 0;border-bottom:1px solid var(--bd)}
+.movs .kv:last-child{border-bottom:none}
+.pago{display:grid;grid-template-columns:90px 1fr 110px 1fr auto;gap:6px;align-items:center;margin:4px 0}
+.pago .mut{font-size:12px}
+.caja-tot{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:10px 0}
 
 /* ============ PANEL DE ESTADÍSTICAS ============ */
 .dh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}

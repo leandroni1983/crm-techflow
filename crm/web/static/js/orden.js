@@ -52,6 +52,8 @@ function filasComp(o) {
   if (o.entrega_est) f.push(['Entrega estimada', fmtD(o.entrega_est)]);
   if (num(o.autoriza)) f.push(['Reparación directa hasta', money(num(o.autoriza))]);
   if (num(o.monto)) f.push(['Presupuesto', money(num(o.monto))]);
+  const totPag = num(o.sena) + (o.pagos||[]).reduce((a,p)=>a+num(p.monto),0);
+  if (totPag) f.push(['Pagado', money(totPag)]);
   return f;
 }
 function filasEntrega(o) {
@@ -61,8 +63,10 @@ function filasEntrega(o) {
   f.push(['Falla informada', o.problema, true], ['Trabajo realizado', o.diagnostico, true]);
   const reps = o.repuestos.map(r => r.desc).filter(Boolean).join(', '); if (reps) f.push(['Repuestos colocados', reps, true]);
   if (num(o.monto)) f.push(['Importe total', money(num(o.monto))]);
-  if (num(o.sena)) f.push(['Seña abonada', money(num(o.sena))]);
-  f.push(['Estado de pago', o.pagado ? 'Abonado en su totalidad' : (num(o.monto) ? 'Saldo pendiente: ' + money(saldo(o)) : '-')]);
+  const totPag = num(o.sena) + (o.pagos||[]).reduce((a,p)=>a+num(p.monto),0);
+  if (totPag) f.push(['Seña abonada', money(totPag)]);
+  const sal = saldo(o);
+  f.push(['Estado de pago', (o.pagado==='1'||o.pagado===true||sal<=0) ? 'Abonado en su totalidad' : (num(o.monto) ? 'Saldo pendiente: ' + money(sal) : '-')]);
   const dias = parseInt(cfg().garantia_dias) || 0, g = garantiaHasta({ ...o, entrega_fecha: o.entrega_fecha || hoy() });
   f.push(['Garantía', dias && g ? `${dias} días · vence el ${g.toLocaleDateString('es-AR')}` : 'Sin garantía', true]);
   return f;
@@ -121,8 +125,17 @@ export async function enviarPDF(o, tipo = 'ingreso') {
 /* ============ DIÁLOGO DE ORDEN ============ */
 const CAMPOS = { cliente: 'fCli', tel: 'fTel', direccion: 'fDir', equipo: 'fEq', equipo_tipo: 'fEt', marca: 'fMa', color: 'fCo', serie: 'fSe', accesorios: 'fAc',
   fisico: 'fFi', deteriorado: 'fDe', tecnico: 'fTe', clave: 'fCl', falla_tipo: 'fFt', garantia_fab: 'fGf', problema: 'fPr', observ: 'fOb', estado: 'fSt', hora: 'fHo',
-  entrega_est: 'fEe', autoriza: 'fAu', diagnostico: 'fDx', monto: 'fMo', sena: 'fSn', entrega_fecha: 'fEf' };
-let editing = null, tmpImgs = [], tmpRep = [];
+  entrega_est: 'fEe', autoriza: 'fAu', diagnostico: 'fDx', monto: 'fMo', sena: 'fSn', entrega_fecha: 'fEf', prioridad: 'fPri' };
+let editing = null, tmpImgs = [], tmpRep = [], tmpPagos = [];
+
+/* ---- pagos parciales (seña + pagos): se muestra el total cobrado y el saldo ---- */
+function drawPagos() {
+  const tot = num($('fSn').value) + tmpPagos.reduce((a, p) => a + num(p.monto), 0);
+  $('fPagos').innerHTML = tmpPagos.length
+    ? tmpPagos.map((p, i) => `<div class="kv"><span><b>${money(num(p.monto))}</b> · ${esc(p.medio || '')}${p.nota ? ' · ' + esc(p.nota) : ''}<span class="mut"> · ${esc(fmtDT(p.fecha))}</span></span><span><button type="button" data-pd="${i}">×</button></span></div>`).join('')
+    : '<div class="mut">Sin pagos parciales. La seña se carga arriba; acá se suman los pagos posteriores.</div>';
+  $('fPagoTot').textContent = tot ? `Total cobrado: ${money(tot)}` + (num($('fMo').value) ? ` · Saldo: ${money(Math.max(num($('fMo').value) - tot, 0))}` : '') : '';
+}
 
 function drawImgs() { $('fImgs').innerHTML = tmpImgs.map((s, i) => `<div class="x"><img src="${s}"><b data-x="${i}">×</b></div>`).join(''); }
 function drawChk(sel) {
@@ -176,9 +189,9 @@ export function openOrd(o) {
   $('fTe').innerHTML = opcTec(b.tecnico);
   for (const [k, id] of Object.entries(CAMPOS)) $(id).value = b[k] || '';
   ftManual = !!b.falla_tipo; etManual = !!b.equipo_tipo;
-  $('fSt').value = b.estado || ESTADOS[0]; $('fPg').checked = !!b.pagado;
-  tmpImgs = [...b.imagenes]; tmpRep = b.repuestos.map(r => ({ ...r }));
-  drawChk(b.checklist); drawRep(); drawRepCat(); drawImgs(); $('fImg').value = '';
+  $('fSt').value = b.estado || ESTADOS[0]; $('fPg').checked = (b.pagado === '1' || b.pagado === true);
+  tmpImgs = [...b.imagenes]; tmpRep = b.repuestos.map(r => ({ ...r })); tmpPagos = (b.pagos || []).map(p => ({ ...p }));
+  drawChk(b.checklist); drawRep(); drawRepCat(); drawImgs(); drawPagos(); $('fImg').value = '';
   $('fPl').innerHTML = '<option value="">— elegir plantilla —</option>' + plantillas().map((p, i) => `<option value="${i}">${esc(p[0])}</option>`).join('');
   pad1.set(b.firma); pad2.set(b.firma_entrega);
   $('fsHist').style.display = o ? '' : 'none';
@@ -197,7 +210,15 @@ $('fImgs').onclick = e => { if (e.target.dataset.x) { tmpImgs.splice(+e.target.d
 $('bRep').onclick = () => { tmpRep.push({ desc: '', cant: '1', costo: '' }); drawRep(); };
 $('fRep').oninput = e => { const i = e.target.dataset.ri; if (i !== undefined) { tmpRep[i][e.target.dataset.k] = e.target.value; totRep(); } };
 $('fRep').onclick = e => { if (e.target.dataset.rd !== undefined) { tmpRep.splice(+e.target.dataset.rd, 1); drawRep(); } };
-$('fMo').oninput = totRep;
+$('fMo').oninput = () => { totRep(); drawPagos(); };
+$('fSn').oninput = drawPagos;
+$('bPago').onclick = () => {
+  const m = num($('pMon').value);
+  if (!m || m <= 0) return alert('Ingresá el monto del pago.');
+  tmpPagos.push({ fecha: ahora(), monto: String(m), medio: $('pMed').value, nota: $('pNota').value.trim() });
+  $('pMon').value = ''; $('pNota').value = ''; drawPagos();
+};
+$('fPagos').onclick = e => { if (e.target.dataset.pd !== undefined) { tmpPagos.splice(+e.target.dataset.pd, 1); drawPagos(); } };
 $('fRepCat').onchange = () => {
   const it = repCat().find(x => x.id === $('fRepCat').value); $('fRepCat').value = '';
   if (!it) return;
@@ -226,11 +247,14 @@ $('bSave').onclick = async () => {
   o.pagado = $('fPg').checked ? '1' : '';
   o.checklist = [...$('fChk').querySelectorAll('input:checked')].map(i => i.value);
   o.repuestos = tmpRep.filter(r => r.desc || r.costo); o.imagenes = tmpImgs; o.firma = pad1.get(); o.firma_entrega = pad2.get();
+  o.pagos = tmpPagos.map(p => ({ ...p }));
   const H = t => o.historial.push({ f: ahora(), t, n: true });
   if (!editing) { o.estado_fecha = ahora(); H('Orden creada'); }
   else {
     if (editing.estado !== o.estado) { o.estado_fecha = ahora(); H(`Estado: ${editing.estado} → ${o.estado}`); }
     if ((editing.tecnico || '') !== o.tecnico) H(`Técnico: ${editing.tecnico || '—'} → ${o.tecnico || '—'}`);
+    if ((editing.prioridad || 'Normal') !== (o.prioridad || 'Normal')) H(`Prioridad: ${editing.prioridad || 'Normal'} → ${o.prioridad || 'Normal'}`);
+    o.pagos.slice((editing.pagos || []).length).forEach(p => H(`Pago registrado: ${money(num(p.monto))} (${p.medio || 'sin medio'})`));
   }
   if (o.estado === 'Entregado' && !o.entrega_fecha) o.entrega_fecha = hoy();
   if (await DB.upsert(o)) { $('dOrd').close(); refrescar(); }

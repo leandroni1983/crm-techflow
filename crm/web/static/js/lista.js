@@ -8,6 +8,7 @@ import { tipoMsg, LBL, LOGT, waLink, waComp, faltaPresu, garTxt, garantiaHasta, 
 
 const PAGINA = 50;                       // órdenes que se dibujan de una vez
 let quick = '', abierta = null, limite = PAGINA;
+const PRIO = { Alta: 0, Normal: 1, Baja: 2 };   // para ordenar por prioridad (menor = más urgente)
 
 const QUICK = {
   dx: ['Para diagnosticar', o => o.estado === 'En diagnóstico'],
@@ -26,9 +27,10 @@ function drawChips() {
 }
 function card(o) {
   const g = garantiaHasta(o), tipo = tipoMsg(o), costos = costoRep(o), viejo = esViejo(o);
-  const dinero = [num(o.monto) && 'Presupuesto: ' + money(num(o.monto)), num(o.sena) && 'Seña: ' + money(num(o.sena)),
-    num(o.monto) && (o.pagado ? '✅ Pagado' : 'Saldo: ' + money(saldo(o)))].filter(Boolean).join(' · ');
-  const datos = [o.equipo_tipo && 'Tipo: ' + esc(o.equipo_tipo), o.serie && 'S/N ' + esc(o.serie), o.color && esc(o.color), o.accesorios && 'Accesorios: ' + esc(o.accesorios), o.fisico && 'Físico: ' + esc(o.fisico)].filter(Boolean).join(' · ');
+  const sal = saldo(o);
+  const dinero = [num(o.monto) && 'Presupuesto: ' + money(num(o.monto)), (num(o.sena) || (o.pagos||[]).length) && 'Pagado: ' + money(num(o.sena) + (o.pagos||[]).reduce((a,p)=>a+num(p.monto),0)),
+    num(o.monto) && ((o.pagado === '1' || o.pagado === true) ? '✅ Pagado' : (sal>0?'Saldo: ' + money(sal):'✅ Pagado'))].filter(Boolean).join(' · ');
+  const datos = [o.equipo_tipo && 'Tipo: ' + esc(o.equipo_tipo), o.serie && 'S/N ' + esc(o.serie), o.color && esc(o.color), o.accesorios && 'Accesorios: ' + esc(o.accesorios), o.fisico && 'Físico: ' + esc(o.fisico), o.prioridad && 'Prioridad: ' + esc(o.prioridad)].filter(Boolean).join(' · ');
   const dias = viejo ? ' · +' + Math.floor(diasDesde(o.estado_fecha || o.creada)) + ' días' : '';
   return `<div class="ord" data-id="${o.id}">
     <button type="button" class="ord-line" data-a="toggle" data-id="${o.id}" aria-expanded="false">
@@ -61,6 +63,7 @@ function card(o) {
       <button data-a="print" data-id="${o.id}">🖨️ Imprimir</button>
       <button data-a="label" data-id="${o.id}">🏷️ Etiqueta</button>
       ${o.seg ? `<button data-a="seg" data-id="${o.id}" title="Link privado para que el cliente vea cómo va su orden">🔗 Seguimiento</button>` : ''}
+      <button data-a="cli" data-id="${o.id}" title="Historial, deuda y equipos del cliente">👤 Cliente</button>
       <button data-a="edit" data-id="${o.id}">Editar</button>
       <button class="dg" data-a="del" data-id="${o.id}" title="Manda la orden a la papelera (se puede recuperar desde Configuración)">🗑️ Borrar</button>
     </div></div></div>`;
@@ -71,6 +74,11 @@ export function render() {
   const q = $('q').value.toLowerCase(), f = $('fs').value, tf = $('fT').value, qf = quick ? QUICK[quick][1] : () => true;
   const L = DB.ordenes.filter(o => (!f || o.estado === f) && (!tf || o.tecnico === (tf === '@yo' ? yo() : tf)) && qf(o) &&
     (numOrden(o) + o.cliente + nombreEq(o) + (o.equipo_tipo || '') + o.tel + o.serie).toLowerCase().includes(q));
+  const ord = $('orden').value;
+  if (ord === 'prioridad') L.sort((a, b) => (PRIO[a.prioridad] ?? 1) - (PRIO[b.prioridad] ?? 1) || String(b.creada).localeCompare(String(a.creada)));
+  else if (ord === 'deuda') L.sort((a, b) => saldo(b) - saldo(a));
+  else if (ord === 'antiguos') L.sort((a, b) => String(a.creada).localeCompare(String(b.creada)));
+  else L.sort((a, b) => String(b.creada).localeCompare(String(a.creada)));
   const visibles = L.slice(0, limite);
   $('list').innerHTML = visibles.length
     ? visibles.map(card).join('') + (L.length > limite
@@ -113,6 +121,7 @@ $('list').onclick = async e => {
     if (a === 'label') return etiquetar(o);
     if (a === 'edit') return openOrd(o);
     if (a === 'seg') return copiarLink(o);
+    if (a === 'cli') return fichaCliente(o);
     if (a === 'del') return aPapelera(o);
     return;
   }
@@ -121,11 +130,55 @@ $('chips').onclick = e => { const b = e.target.closest('[data-q]'); if (b) { qui
 $('q').oninput = () => { limite = PAGINA; render(); };
 $('fs').onchange = () => { limite = PAGINA; render(); };
 $('fT').onchange = () => { limite = PAGINA; render(); };
+$('orden').onchange = () => { limite = PAGINA; render(); };
 export function drawTec() {
   const v = $('fT').value;
   $('fT').innerHTML = '<option value="">Todos los técnicos</option><option value="@yo">Mis órdenes</option>' + DB.tecnicos.map(n => `<option>${esc(n)}</option>`).join('');
   $('fT').value = v; $('fT').style.display = DB.tecnicos.length > 1 ? '' : 'none';
 }
+
+/* ============ FICHA DE CLIENTE ============
+   Todo el historial de una persona: sus equipos, lo que debe y lo que ya pagó. Se abre desde el botón
+   "👤 Cliente" de una orden y agrupa por teléfono (o por nombre si no hay teléfono). */
+let fichaActual = [];
+const claveCli = o => { const t = normTel(o.tel); return t ? 't:' + t : 'n:' + String(o.cliente || '').trim().toLowerCase(); };
+function fichaCliente(o) {
+  const k = claveCli(o), L = DB.ordenes.filter(x => claveCli(x) === k).sort((a, b) => String(b.creada).localeCompare(String(a.creada)));
+  const deuda = L.reduce((a, x) => a + saldo(x), 0);
+  const cob = L.reduce((a, x) => a + num(x.sena) + (x.pagos || []).reduce((s, p) => s + num(p.monto), 0), 0);
+  const fact = L.filter(x => x.estado === 'Entregado').reduce((a, x) => a + num(x.monto), 0);
+  const eq = [...new Set(L.map(nombreEq).filter(Boolean))];
+  $('dCliTit').textContent = '👤 ' + (o.cliente || 'Cliente');
+  $('dCliBody').innerHTML = `
+    <div class="caja-tot">
+      <div class="kpi"><span class="kpi-t">Órdenes</span><b class="kpi-v">${L.length}</b></div>
+      <div class="kpi ok"><span class="kpi-t">Total cobrado</span><b class="kpi-v">${money(cob)}</b></div>
+      <div class="kpi ${deuda > 0 ? 'warn' : ''}"><span class="kpi-t">Deuda pendiente</span><b class="kpi-v">${money(deuda)}</b></div>
+      <div class="kpi"><span class="kpi-t">Facturado entregado</span><b class="kpi-v">${money(fact)}</b></div>
+    </div>
+    ${o.tel ? `<div class="mut ln">📱 ${esc(o.tel)}${o.direccion ? ' · ' + esc(o.direccion) : ''}</div>` : ''}
+    ${eq.length ? `<div class="mut ln">Equipos: ${eq.map(esc).join(', ')}</div>` : ''}
+    <div style="margin-top:10px" class="movs">${L.map(x => {
+      const s = saldo(x);
+      return `<div class="kv"><span>${esc(numOrden(x))} · ${esc(nombreEq(x))}<span class="mut"> · ${esc(fmtD(String(x.creada).slice(0, 10)))} · ${esc(x.estado)}</span></span>
+        <span>${num(x.monto) ? (x.pagado === '1' || s <= 0 ? '<b style="color:var(--wa)">pagado</b>' : '<span class="mut">debe </span>' + money(s)) : ''}</span></div>`;
+    }).join('')}</div>`;
+  fichaActual = L;
+  $('dCli').showModal();
+}
+$('dCliCan').onclick = () => $('dCli').close();
+$('dCliCsv').onclick = () => {
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const cab = ['N° orden', 'Fecha', 'Cliente', 'Equipo', 'Estado', 'Presupuesto', 'Seña', 'Pagos', 'Total cobrado', 'Deuda'];
+  const filas = fichaActual.map(x => {
+    const tot = num(x.sena) + (x.pagos || []).reduce((a, p) => a + num(p.monto), 0);
+    return [numOrden(x), fmtD(String(x.creada).slice(0, 10)), x.cliente, nombreEq(x), x.estado, num(x.monto), num(x.sena),
+      (x.pagos || []).reduce((a, p) => a + num(p.monto), 0), tot, x.pagado ? 0 : Math.max(num(x.monto) - tot, 0)];
+  });
+  const csv = '\ufeff' + [cab.map(q).join(';'), ...filas.map(f => f.map(q).join(';'))].join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'cliente-' + (fichaActual[0]?.cliente || 'ficha').replace(/[^\w]+/g, '-') + '.csv'; a.click(); URL.revokeObjectURL(a.href);
+};
 
 /* ============ EQUIPOS SIN RETIRAR ============
    Los que están listos y el cliente todavía no vino a buscar: de un vistazo, con el aviso a mano. */

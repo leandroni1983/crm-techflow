@@ -11,7 +11,7 @@ import hashlib, hmac, os
 
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "templates")
 PLANTILLA = os.path.join(WEB, "seguimiento.html")
-ESTADOS = ["Recibido", "En diagnóstico", "Presupuesto", "Esperando repuesto", "En reparación", "Listo para retirar", "Entregado"]
+ESTADOS = ["Recibido", "En diagnóstico", "Presupuesto", "Esperando repuesto", "En reparación", "Listo para retirar", "Entregado", "Aprobado", "Rechazado"]
 
 
 def token(clave, seq, oid):
@@ -66,20 +66,36 @@ def _historial(o):
                       for x in h[-8:]))
 
 
-def pagina(cfg, o):
-    """Arma la página del cliente. Es HTML propio, sin JS: se puede abrir en cualquier celular."""
+def _acciones(o, token):
+    """Que el cliente apruebe o rechace el presupuesto desde el mismo link, sin escribir por WhatsApp."""
+    if not token: return ""
+    est = str(o.get("estado") or "")
+    decidido = str(o.get("presu_estado") or "")
+    if decidido:
+        txt = "Aprobaste el presupuesto" if decidido == "Aprobado" else "Rechazaste el presupuesto"
+        return f'<div class="aprob"><b>{_esc(txt)}</b> el {_esc(_fecha(o.get("presu_fecha")))}. Gracias!</div>'
+    if est != "Presupuesto": return ""
+    url = f"/seguimiento/{int(o.get('seq') or 0)}/{_esc(token)}/estado"
+    return ('<div class="aprob"><div style="margin-bottom:8px">¿Estás de acuerdo con el presupuesto?</div>'
+            f'<div class="acts"><button type="button" id="bAprobar" data-decision="aprobar" data-url="{url}">✅ Aprobar</button>'
+            f'<button type="button" class="dg" data-decision="rechazar" data-url="{url}">❌ Rechazar</button></div>'
+            '<div id="apMsg" class="mut" style="margin-top:8px"></div></div>')
+
+
+def pagina(cfg, o, token=""):
+    """Arma la página del cliente. Es HTML propio y liviano: se puede abrir en cualquier celular."""
     with open(PLANTILLA, encoding="utf-8") as f: t = f.read()
     estado = str(o.get("estado") or "")
-    saldo = 0 if o.get("pagado") else max(_num(o.get("monto")) - _num(o.get("sena")), 0)
+    saldo = 0 if o.get("pagado") else max(_num(o.get("monto")) - _num(o.get("sena")) - sum(_num(p.get("monto")) for p in (o.get("pagos") or [])), 0)
     entrega = o.get("entrega_est") or o.get("entrega_fecha")
-    clase = "ok" if estado == "Entregado" else ("warn" if estado == "Listo para retirar" else "")
+    clase = "ok" if estado in ("Entregado", "Aprobado") else ("warn" if estado in ("Listo para retirar", "Rechazado") else "")
     reempl = {
         "taller": _esc(cfg.get("taller") or "Taller"), "numero": _esc(numero(cfg, o)), "cliente": _esc(o.get("cliente")),
         "equipo": _esc(" ".join(x for x in (o.get("equipo"), o.get("marca")) if x)) or "—", "estado": _esc(estado) or "—",
         "clase": clase, "ingreso": _esc(_fecha(o.get("creada"))), "pasos": _pasos(estado), "historial": _historial(o),
         "entrega": f'<div class="kv"><span>Entrega estimada</span><span>{_esc(_fecha(entrega))}</span></div>' if entrega else "",
         "saldo": f'<div class="kv"><span>Saldo a pagar</span><span>{_esc(_money(saldo))}</span></div>' if saldo else "",
-        "datos": _esc(cfg.get("taller_datos")),
+        "datos": _esc(cfg.get("taller_datos")), "acciones": _acciones(o, token),
     }
     for k, v in reempl.items(): t = t.replace("{{" + k + "}}", v)
     return t

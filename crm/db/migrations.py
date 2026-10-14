@@ -42,7 +42,16 @@ def m5_papelera(t):
     if "borrada" not in _cols(t, "ordenes"): t.run("ALTER TABLE ordenes ADD COLUMN borrada TEXT")
 
 
+def m6_pagos_prioridad_aprobacion(t):
+    """Campos para pagos parciales, prioridad, aprobación de presupuesto y auditoría futura."""
+    have = _cols(t, "ordenes")
+    for col in ("pagos", "prioridad", "presu_estado", "presu_fecha", "presu_motivo", "presu_quien"):
+        if col not in have and col in TEXT_COLS + JSON_COLS:  # pagos es JSON
+            t.run(f"ALTER TABLE ordenes ADD COLUMN {col} TEXT")
+
+
 MIGRATIONS = [(1, "esquema base", m1_esquema), (2, "secuencia de números de orden", m2_secuencia),
               (3, "tipo de falla", m3_falla_tipo), (4, "tipo de equipo", m4_equipo_tipo),
-              (5, "papelera", m5_papelera)]
+              (5, "papelera", m5_papelera),
+              (6, "pagos y aprobación de presupuesto", m6_pagos_prioridad_aprobacion)]
 LATEST = MIGRATIONS[-1][0]

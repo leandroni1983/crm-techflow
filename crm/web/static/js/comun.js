@@ -10,7 +10,11 @@ export const find = id => DB.data.ordenes.find(x => x.id === id);   // incluye l
 export const yo = () => DB.usuario?.nombre || '';
 export const nombreEq = o => [o.equipo, o.marca].filter(Boolean).join(' ');
 export const fechaOrd = o => new Date(o.creada || Date.now()).toLocaleDateString('es-AR');
-export const saldo = o => o.pagado ? 0 : Math.max(num(o.monto) - num(o.sena), 0);
+export const saldo = o => {
+  let pagado = num(o.sena);
+  if (Array.isArray(o.pagos)) pagado += o.pagos.reduce((a,p)=>a + num(p.monto), 0);
+  return (o.pagado === '1' || o.pagado === true) ? 0 : Math.max(num(o.monto) - pagado, 0);
+};
 export const costoRep = o => o.repuestos.reduce((a, r) => a + num(r.costo) * cantR(r), 0);
 export const alertaDias = () => parseInt(cfg().dias_alerta) || 7;
 /* Listo para retirar y el cliente todavía no vino: se usa en la lista, el contador y las estadísticas. */

@@ -9,7 +9,7 @@ from .. import __version__, seg
 from ..backup import dump as backup_dump
 from ..db import DBUnavailable
 from ..log import log
-from ..orders import delete_order, save_order
+from ..orders import decidir_presupuesto, delete_order, save_order
 from ..pdf import pdf_comprobante
 from ..qr import qr_matrix
 from ..resumen import datos as resumen_datos
@@ -19,7 +19,7 @@ from ..service import NeedsDB, NoSeq
 WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 STATIC = os.path.realpath(os.path.join(WEB, "static"))
 PROTECTED_STATIC = {f"js/{n}.js" for n in ("app", "db", "util", "comun", "cat", "orden", "lista", "config", "panel", "modo")}  # el resto de /static es público (lo necesita la pantalla de login)
-ADMIN_CONFIG_KEYS = {"fallas", "equipos", "repuestos", "seg_clave"}  # claves de configuración que solo puede cambiar el administrador
+ADMIN_CONFIG_KEYS = {"fallas", "equipos", "repuestos", "seg_clave", "ocultar_importes", "perm_borrar_admin"}  # claves de configuración que solo puede cambiar el administrador
 TYPES = {".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".png": "image/png",
          ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml"}
 NAME_RE = re.compile(r"^[a-z0-9_.-]{3,30}$")
@@ -173,11 +173,12 @@ def make_handler(app):
                 if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Probá en un rato."})
                 partes = [x for x in p[len("/seguimiento/"):].split("/") if x]
                 clave, o = svc.config().get("seg_clave", ""), None
-                if len(partes) == 2 and partes[0].isdigit() and clave:
+                if len(partes) >= 2 and partes[0].isdigit() and clave:
                     o = next((x for x in svc.orders() if x["seq"] == int(partes[0])), None)
                     if o and not seg.valido(clave, o["seq"], o["id"], partes[1]): o = None
-                if not o: return self._send(404, seg.invalido().encode(), "text/html; charset=utf-8")
-                return self._send(200, seg.pagina(svc.config(), o).encode(), "text/html; charset=utf-8")
+                if not o or len(partes) != 2:
+                    return self._send(404, seg.invalido().encode(), "text/html; charset=utf-8")
+                return self._send(200, seg.pagina(svc.config(), o, partes[1]).encode(), "text/html; charset=utf-8")
             if not p.startswith("/api/"): return self._send(404, {"error": "not found"})
             if not user: return self._send(401, {"error": "login"})
             if p == "/api/data":
@@ -185,6 +186,9 @@ def make_handler(app):
                 clave = cfg.pop("seg_clave", "")          # la clave secreta nunca sale del servidor
                 ordenes = svc.orders()
                 if clave: ordenes = [{**o, "seg": seg.token(clave, o["seq"], o["id"])} for o in ordenes]
+                ocultar = user["rol"] != "admin" and str(cfg.get("ocultar_importes","")).lower() in ("1","true","si","sí","yes")
+                if ocultar:
+                    ordenes = [{**o, "monto": "", "sena": "", "pagado": "", "pagos": []} for o in ordenes]
                 return self._json_etag({"ordenes": ordenes, "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
             if p == "/api/resumen":
                 # Agregados del panel: se calculan acá (la base es mucho más rápida que el celular).
@@ -215,6 +219,7 @@ def make_handler(app):
         def _post(self):
             p = self.path
             if not self._origen_ok(): return self._send(403, {"error": "Origen no permitido"})
+            if p.startswith("/seguimiento/"): return self._seg_post(p)
             try: d = self._json()
             except Exception: return self._send(400, {"error": "solicitud inválida"})
             if p == "/api/login": return self._login(d)
@@ -275,13 +280,32 @@ def make_handler(app):
             token = secrets.token_urlsafe(32); svc.sess_add(token_hash(token), name, time.time() + st.session_days * 86400)
             return self._send(200, {"ok": True}, headers=self._cookie(token, st.session_days * 86400))
 
+        # ---------------- portal de seguimiento (POST sin sesión: aprueba/rechaza el presupuesto)
+        def _seg_post(self, p):
+            if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Probá en un rato."})
+            partes = [x for x in p[len("/seguimiento/"):].split("/") if x]
+            clave, o = svc.config().get("seg_clave", ""), None
+            if len(partes) == 3 and partes[0].isdigit() and partes[2] == "estado" and clave:
+                o = next((x for x in svc.orders() if x["seq"] == int(partes[0])), None)
+                if o and not seg.valido(clave, o["seq"], o["id"], partes[1]): o = None
+            if not o: return self._send(404, {"error": "Link no válido"})
+            try: d = self._json()
+            except Exception: return self._send(400, {"error": "solicitud inválida"})
+            decision = str(d.get("decision", ""))
+            if decision not in ("aprobar", "rechazar"): return self._send(400, {"error": "Decisión inválida"})
+            if o.get("presu_estado"): return self._send(200, {"ok": True, "estado": o["presu_estado"]})   # ya decidido: no se pisa
+            decidir_presupuesto(app, o, decision, d.get("motivo", ""))
+            return self._send(200, {"ok": True, "estado": "Aprobado" if decision == "aprobar" else "Rechazado"})
+
         # ---------------- DELETE
         def _delete(self):
             if not self._origen_ok(): return self._send(403, {"error": "Origen no permitido"})
             user = self._user()
             if not user: return self._send(401, {"error": "login"})
             if self.path.startswith("/api/orden/"):
-                if user["rol"] != "admin": return self._send(403, {"error": "Para borrar de verdad hace falta ser administrador (los demás pueden mandarla a la papelera)."})
+                cfg = svc.config()
+                if user["rol"] != "admin" and str(cfg.get("perm_borrar_admin","")).lower() not in ("0","false","no"):
+                    return self._send(403, {"error": "Para borrar de verdad hace falta ser administrador (los demás pueden mandarla a la papelera)."})
                 delete_order(app, self.path.rsplit("/", 1)[1])
                 return self._send(200, {"ok": True})
             if self.path.startswith("/api/usuarios/"):

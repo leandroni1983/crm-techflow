@@ -151,7 +151,7 @@ class Store:
     def _upsert(self, t, o, seq, hist, mod):
         names = ORDER_COLS
         vals = [o["id"], seq] + [("" if o.get(k) is None else str(o.get(k))) for k in TEXT_COLS] \
-            + [json.dumps(hist if k == "historial" else (o.get(k) or [])) for k in JSON_COLS] + [o.get("creada"), mod]
+            + [json.dumps(hist if k == "historial" else ((o.get(k) or [])) if k != "pagos" else (o.get(k) or [])) for k in JSON_COLS] + [o.get("creada"), mod]
         upd = ", ".join(f"{k}=excluded.{k}" for k in TEXT_COLS + JSON_COLS + ["actualizada"])
         t.run(f"INSERT INTO ordenes({','.join(names)}) VALUES({','.join('?' * len(names))}) ON CONFLICT(id) DO UPDATE SET {upd}", vals)
 

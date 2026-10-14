@@ -174,6 +174,79 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(sin_sesion.get(f"/seguimiento/{o['seq']}/{o['seg']}/x")[0], 404)
         a.delete("/api/orden/seg1")
 
+    # ---- pagos parciales, prioridad y aprobación del presupuesto en el portal
+    def test_pagos_parciales_y_prioridad(self):
+        """Los pagos posteriores a la seña quedan guardados y el saldo se calcula con todos ellos."""
+        a = self.env.client(); a.login()
+        o = {"id": "pago1", "cliente": "Pago", "tel": "11", "monto": "10000", "sena": "2000", "prioridad": "Alta",
+             "pagos": [{"fecha": "2026-10-14T10:00:00Z", "monto": "3000", "medio": "Efectivo", "nota": "parte 1"},
+                       {"fecha": "2026-10-14T12:00:00Z", "monto": "1000", "medio": "Transferencia", "nota": ""}]}
+        self.assertEqual(a.post("/api/orden", o)[0], 200)
+        got = self._orden(a, "pago1")
+        self.assertEqual(got["prioridad"], "Alta")
+        self.assertEqual([p["monto"] for p in got["pagos"]], ["3000", "1000"])
+        self.assertEqual(sum(int(p["monto"]) for p in got["pagos"]) + int(got["sena"]), 6000)
+        # un pago guardado como texto JSON también se acepta y se normaliza a lista
+        self.assertEqual(a.post("/api/orden", {**o, "pagos": '[{"monto": "500"}]'})[0], 200)
+        self.assertEqual(self._orden(a, "pago1")["pagos"][0]["monto"], "500")
+        a.delete("/api/orden/pago1")
+
+    def test_aprobacion_del_presupuesto_por_el_cliente(self):
+        a = self.env.client(); a.login()
+        a.post("/api/orden", {"id": "apr1", "cliente": "Aprobadora", "tel": "11", "estado": "Presupuesto", "monto": "8000"})
+        o = self._orden(a, "apr1")
+        url = f"/seguimiento/{o['seq']}/{o['seg']}/estado"
+        cli = self.env.client()                                                       # el cliente no tiene sesión
+        # token inválido o decisión inválida: no pasa nada
+        self.assertEqual(cli.post(f"/seguimiento/{o['seq']}/000000000000/estado", {"decision": "aprobar"})[0], 404)
+        self.assertEqual(cli.post(url, {"decision": "cualquiera"})[0], 400)
+        # el cliente aprueba: cambia el estado y queda registrado quién y cuándo
+        code, r, _ = cli.post(url, {"decision": "aprobar"})
+        self.assertEqual((code, r["estado"]), (200, "Aprobado"))
+        got = self._orden(a, "apr1")
+        self.assertEqual((got["presu_estado"], got["presu_quien"], got["estado"]), ("Aprobado", "cliente", "Aprobado"))
+        self.assertTrue(got["presu_fecha"])
+        self.assertTrue(any(h["u"] == "cliente" and "aprob" in h["t"].lower() for h in got["historial"]))
+        # una segunda decisión no pisa la primera
+        self.assertEqual(cli.post(url, {"decision": "rechazar"})[0], 200)
+        self.assertEqual(self._orden(a, "apr1")["presu_estado"], "Aprobado")
+        # rechazar con motivo deja el texto guardado
+        a.post("/api/orden", {"id": "apr2", "cliente": "Rechazona", "tel": "11", "estado": "Presupuesto", "monto": "5000"})
+        o2 = self._orden(a, "apr2")
+        self.assertEqual(cli.post(f"/seguimiento/{o2['seq']}/{o2['seg']}/estado", {"decision": "rechazar", "motivo": "está caro"})[0], 200)
+        got2 = self._orden(a, "apr2")
+        self.assertEqual((got2["presu_estado"], got2["estado"], got2["presu_motivo"]), ("Rechazado", "Rechazado", "está caro"))
+        a.delete("/api/orden/apr1"); a.delete("/api/orden/apr2")
+
+    def test_permisos_finos_importes_y_borrado(self):
+        """ocultar_importes borra la plata de la vista del técnico y perm_borrar_admin lo habilita a borrar."""
+        a = self.env.client(); a.login()
+        a.post("/api/usuarios", {"nombre": "tec-fin", "password": "clave-tec-1234", "rol": "tecnico"})
+        self.addCleanup(lambda: a.post("/api/config", {"ocultar_importes": "0", "perm_borrar_admin": "1"}))
+        self.addCleanup(lambda: a.delete("/api/usuarios/tec-fin"))
+        t = self.env.client(); t.login("tec-fin", "clave-tec-1234")
+        a.post("/api/orden", {"id": "fin1", "cliente": "Plata", "tel": "11", "monto": "9000", "sena": "1000",
+                              "pagos": [{"monto": "2000"}], "pagado": "1"})
+        # por defecto el técnico ve los importes
+        self.assertEqual(self._orden(t, "fin1")["monto"], "9000")
+        # el técnico no puede cambiar los permisos (claves de administrador)
+        self.assertEqual(t.post("/api/config", {"ocultar_importes": "1"})[0], 403)
+        self.assertEqual(t.post("/api/config", {"perm_borrar_admin": "0"})[0], 403)
+        self.assertEqual(a.post("/api/config", {"ocultar_importes": "1"})[0], 200)
+        # ahora al técnico le llegan vacíos los importes, pero el admin los sigue viendo
+        oc = self._orden(t, "fin1")
+        self.assertEqual((oc["monto"], oc["sena"], oc["pagado"], oc["pagos"]), ("", "", "", []))
+        self.assertEqual(self._orden(a, "fin1")["monto"], "9000")
+        # perm_borrar_admin = 0 habilita al técnico a borrar de verdad
+        self.assertEqual(a.post("/api/config", {"perm_borrar_admin": "0"})[0], 200)
+        self.assertEqual(t.delete("/api/orden/fin1")[0], 200)
+        # con perm_borrar_admin = 1 vuelve a ser solo del administrador
+        a.post("/api/orden", {"id": "fin2", "cliente": "Plata 2", "tel": "11"})
+        self.assertEqual(a.post("/api/config", {"perm_borrar_admin": "1"})[0], 200)
+        self.assertEqual(t.delete("/api/orden/fin2")[0], 403)
+        a.delete("/api/orden/fin2")
+        a.post("/api/config", {"ocultar_importes": "0"})
+
     # ---- panel de estadísticas: agregación en el servidor y ETag
     def test_resumen_y_etag_del_servidor(self):
         """El panel puede pedir los números ya calculados y no bajar de nuevo lo que no cambió."""

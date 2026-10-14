@@ -16,16 +16,18 @@ export const DEFAULTS = {
   msgC: 'Hola {cliente}! Recibimos tu equipo en {taller}.\n\n📋 Orden N°: {numero}\n📅 Fecha: {fecha}\n💻 Equipo: {equipo}\n🔢 N° de serie: {serie}\n🎒 Accesorios: {accesorios}\n🔍 Estado físico: {fisico}\n⚠️ Falla informada: {falla}\n\n{condiciones}\n\nGuardá este mensaje: con tu número de orden podés consultarnos el estado del equipo.',
   msgEntrega: 'Hola {cliente}! Te enviamos el comprobante de entrega de tu equipo ({equipo}). Orden N° {numero}. Saldo: {saldo}. {garantia} Gracias por confiar en {taller}.',
   condiciones_entrega: 'Recibí el equipo en conformidad y en funcionamiento. La garantía cubre únicamente la reparación realizada y los repuestos colocados; no cubre golpes, humedad, mal uso ni intervenciones de terceros.',
-  condiciones: 'Condiciones: el presupuesto puede variar si aparecen fallas adicionales. Pasados 90 días del aviso de reparación sin retirar el equipo, el taller no se responsabiliza por el mismo.'
+  condiciones: 'Condiciones: el presupuesto puede variar si aparecen fallas adicionales. Pasados 90 días del aviso de reparación sin retirar el equipo, el taller no se responsabiliza por el mismo.',
+  ocultar_importes: '0', perm_borrar_admin: '1'
 };
 
 export const ordenVacia = () => ({
   cliente: '', tel: '', direccion: '', equipo: '', equipo_tipo: '', marca: '', color: '', serie: '', accesorios: '', fisico: '', deteriorado: '',
   clave: '', falla_tipo: '', problema: '', diagnostico: '', monto: '', autoriza: '', sena: '', pagado: '', estado: 'Recibido', estado_fecha: '',
   hora: '', entrega_est: '', entrega_fecha: '', garantia_fab: '', observ: '', firma: '', firma_entrega: '', tecnico: '', borrada: '',
-  checklist: [], repuestos: [], historial: [], imagenes: []
+  prioridad: 'Normal', presu_estado: '', presu_fecha: '', presu_motivo: '', presu_quien: '',
+  checklist: [], repuestos: [], historial: [], imagenes: [], pagos: []
 });
-export const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['checklist', 'repuestos', 'historial', 'imagenes']) if (!Array.isArray(b[k])) b[k] = []; return b; };
+export const norm = o => { const b = { ...ordenVacia(), ...o }; for (const k of ['checklist', 'repuestos', 'historial', 'imagenes', 'pagos']) if (!Array.isArray(b[k])) b[k] = []; if (!b.prioridad) b.prioridad = 'Normal'; return b; };
 
 export const DB = {
   K: 'crm-tecnico-v1', api: false, usuario: null, tecnicos: [], sync: null,

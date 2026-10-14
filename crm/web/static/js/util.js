@@ -15,7 +15,7 @@ export const diasDesde = iso => iso ? (Date.now() - new Date(iso).getTime()) / 8
 export const cantR = r => Math.max(1, Math.round(num(r.cant) || 1));
 export const fill = (t, m) => t.replace(/{(\w+)}/g, (x, k) => k in m ? (m[k] || '-') : x);
 
-export const ESTADOS = ['Recibido', 'En diagnóstico', 'Presupuesto', 'Esperando repuesto', 'En reparación', 'Listo para retirar', 'Entregado'];
+export const ESTADOS = ['Recibido', 'En diagnóstico', 'Presupuesto', 'Esperando repuesto', 'En reparación', 'Listo para retirar', 'Entregado', 'Aprobado', 'Rechazado'];
 export const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 export const PALETA = ['#2563eb', '#16a34a', '#d97706', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#0d9488'];
 export function topN(arr, n = 8) { const m = {}; arr.forEach(x => m[x] = (m[x] || 0) + 1); return Object.entries(m).sort((a, b) => b[1] - a[1]).slice(0, n); }

@@ -14,7 +14,10 @@ const COLS = [
   ['N° orden', numOrden, 'txt'], ['Fecha ingreso', fechaOrd, 'txt'], ['Cliente', o => o.cliente, 'txt'], ['Teléfono', o => o.tel, 'txt'],
   ['Equipo', o => o.equipo, 'txt'], ['Tipo de equipo', o => o.equipo_tipo, 'txt'], ['Marca', o => o.marca, 'txt'], ['N° de serie', o => o.serie, 'txt'], ['Estado', o => o.estado, 'txt'],
   ['Técnico', o => o.tecnico, 'txt'], ['Tipo de falla', o => o.falla_tipo, 'txt'], ['Falla', o => o.problema, 'txt'], ['Diagnóstico', o => o.diagnostico, 'txt'], ['Presupuesto', o => num(o.monto), 'money'],
-  ['Seña', o => num(o.sena), 'money'], ['Pagado', o => o.pagado ? 'Sí' : 'No', 'txt'], ['Costo repuestos', costoRep, 'money'],
+  ['Seña', o => num(o.sena), 'money'], ['Pagado', o => o.pagado ? 'Sí' : 'No', 'txt'],
+  ['Pagos parciales', o => (o.pagos || []).reduce((a, p) => a + num(p.monto), 0), 'money'],
+  ['Total cobrado', o => num(o.sena) + (o.pagos || []).reduce((a, p) => a + num(p.monto), 0), 'money'],
+  ['Deuda', o => o.pagado ? 0 : Math.max(num(o.monto) - num(o.sena) - (o.pagos || []).reduce((a, p) => a + num(p.monto), 0), 0), 'money'], ['Costo repuestos', costoRep, 'money'],
   ['Ganancia', o => num(o.monto) - costoRep(o), 'money'], ['Fecha entrega', o => fmtD(o.entrega_fecha), 'txt'],
   ['Repuestos', o => (o.repuestos || []).map(r => (r.desc || '') + (cantR(r) > 1 ? ' x' + cantR(r) : '')).filter(Boolean).join(', '), 'txt'],
   ['Garantía hasta', o => { const g = garantiaHasta(o); return g ? g.toLocaleDateString('es-AR') : ''; }, 'txt']
@@ -149,8 +152,64 @@ export async function resumen() {
   let d = null;
   if (puedeServidor()) { try { d = await datosServidor(r); } catch (e) { d = null; } }
   dibujar(r, d || datosLocal(r));
+  aplicarMascara();
 }
+
+/* ============ OCULTAR PRECIOS DEL PANEL ============
+   Un botón tapa los importes con asteriscos, por si alguien está mirando la pantalla al lado.
+   El estado se recuerda en el navegador (no es una configuración del taller, solo de esta persona). */
+let ocultarPrecios = localStorage.getItem('crm-ocultar') === '1';
+function aplicarMascara() {
+  if (!ocultarPrecios) return;
+  const w = document.createTreeWalker($('rOut'), NodeFilter.SHOW_TEXT);
+  const nodos = []; let n;
+  while ((n = w.nextNode())) if (/\$\s?\d/.test(n.nodeValue)) nodos.push(n);   // solo lo que es plata: los conteos se quedan
+  nodos.forEach(n => { n.nodeValue = n.nodeValue.replace(/\$\s?\d[\d.,]*/g, '*****'); });
+}
+function pintarBtnOcultar() { $('bOcultar').textContent = ocultarPrecios ? '👁️ Ver precios' : '🔒 Ocultar precios'; }
+$('bOcultar').onclick = () => {
+  ocultarPrecios = !ocultarPrecios;
+  localStorage.setItem('crm-ocultar', ocultarPrecios ? '1' : '0');
+  pintarBtnOcultar(); resumen();
+};
+pintarBtnOcultar();
 $('rPer').onchange = () => { $('rMesW').style.display = $('rPer').value === 'mes' ? '' : 'none'; resumen(); };
 $('rMes').onchange = resumen;
 $('rExcel').onclick = () => descargarCSV(DB.ordenes.filter(o => enRango(o.creada, rango())), 'estadisticas-' + hoy() + '.csv');
 $('bCsv').onclick = () => descargarCSV(DB.ordenes, 'ordenes-' + hoy() + '.csv');
+
+/* ============ CAJA DEL DÍA (arqueo de cobros) ============
+   Junta, para una fecha, la seña de cada orden cargada ese día y todos los pagos parciales registrados ese día.
+   Muestra el total por medio de pago y permite exportar el detalle a Excel. */
+function cobrosDelDia(dia) {
+  const out = [];
+  for (const o of DB.ordenes) {
+    if (num(o.sena) && String(o.creada || '').slice(0, 10) === dia) out.push({ fecha: dia, ord: o, monto: num(o.sena), medio: 'Seña' });
+    for (const p of (o.pagos || [])) if (String(p.fecha || '').slice(0, 10) === dia) out.push({ fecha: dia, ord: o, monto: num(p.monto), medio: p.medio || 'Otro', nota: p.nota || '' });
+  }
+  return out.sort((a, b) => String(a.ord.seq).localeCompare(String(b.ord.seq)));
+}
+function dibujarCaja() {
+  const dia = $('cjaDia').value || hoy(), L = cobrosDelDia(dia);
+  const total = L.reduce((a, x) => a + x.monto, 0), porMedio = {};
+  L.forEach(x => porMedio[x.medio] = (porMedio[x.medio] || 0) + x.monto);
+  $('cjaTot').innerHTML = `<div class="kpi ok"><span class="kpi-t">Total del día</span><b class="kpi-v">${money(total)}</b><span class="kpi-s">${L.length} cobro(s)</span></div>` +
+    Object.entries(porMedio).map(([m, v]) => `<div class="kpi"><span class="kpi-t">${esc(m)}</span><b class="kpi-v">${money(v)}</b></div>`).join('');
+  $('cjaList').innerHTML = L.length
+    ? L.map(x => `<div class="kv"><span>${esc(numOrden(x.ord))} · ${esc(x.ord.cliente)}<span class="mut"> · ${esc(x.medio)}${x.nota ? ' · ' + esc(x.nota) : ''}</span></span><b>${money(x.monto)}</b></div>`).join('')
+    : '<div class="mut">No hay cobros registrados en esa fecha.</div>';
+}
+function abrirCaja() { if (!$('cjaDia').value) $('cjaDia').value = hoy(); dibujarCaja(); $('dCaja').showModal(); }
+$('bCaja').onclick = abrirCaja;
+$('cjaDia').onchange = dibujarCaja;
+$('cjaHoy').onclick = () => { $('cjaDia').value = hoy(); dibujarCaja(); };
+$('cjaAyer').onclick = () => { const d = new Date(); d.setDate(d.getDate() - 1); $('cjaDia').value = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`; dibujarCaja(); };
+$('cjaCan').onclick = () => $('dCaja').close();
+$('cjaCsv').onclick = () => {
+  const dia = $('cjaDia').value || hoy(), L = cobrosDelDia(dia);
+  const q = v => '"' + String(v ?? '').replace(/"/g, '""') + '"';
+  const csv = '\ufeff' + [['N° orden', 'Cliente', 'Medio', 'Monto', 'Nota'].map(q).join(';'),
+    ...L.map(x => [numOrden(x.ord), x.ord.cliente, x.medio, x.monto, x.nota].map(q).join(';'))].join('\r\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'caja-' + dia + '.csv'; a.click(); URL.revokeObjectURL(a.href);
+};
