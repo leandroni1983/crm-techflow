@@ -22,6 +22,16 @@ def ensure_admin(app):
     else: print("=" * 60 + f"\n  PRIMER INGRESO  ->  usuario: {st.admin_user}   contraseña: {pw}\n  (guardala y cambiala desde ⚙️ > Mi cuenta)\n" + "=" * 60, flush=True)
 
 
+def ensure_seg(app):
+    """Genera la clave secreta de los links de seguimiento la primera vez (después ya no cambia, así los
+    links que ya mandaste siguen funcionando). No se manda nunca al navegador: solo firma los links."""
+    svc = app.service
+    if svc.config().get("seg_clave"): return
+    svc.config_set({"seg_clave": secrets.token_hex(16)})
+    log("Portal de seguimiento listo: cada orden tiene su link privado para que el cliente vea cómo va "
+        "(se usa en los mensajes con {seguimiento}).")
+
+
 def migrate_legacy_media(app):
     """Pasa a archivos las fotos/firmas que versiones viejas guardaban dentro de la base."""
     n = 0

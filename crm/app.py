@@ -1,7 +1,7 @@
 """Contenedor de dependencias de la aplicación (se crea una vez y se pasa a quien lo necesite)."""
 import os
 
-from .bootstrap import ensure_admin, migrate_legacy_media
+from .bootstrap import ensure_admin, ensure_seg, migrate_legacy_media
 from .config import Settings
 from .db import open_store
 from .media import MediaStore
@@ -17,10 +17,11 @@ class App:
         self.media = MediaStore(settings.media_dir)
         self.service = DataService(self.store, settings.data_dir, settings.database_url, probe_secs=settings.sync_secs)
         self.limiter = LoginLimiter()
-        self.rate = RateLimiter()   # endpoints pesados: QR y comprobantes
+        self.rate = RateLimiter()   # endpoints pesados: QR, comprobantes, respaldo y portal de seguimiento
 
     def start(self):
         """Conecta con la base, migra el esquema, asegura el administrador y carga la copia en memoria."""
         self.service.start()
         ensure_admin(self)
+        ensure_seg(self)
         migrate_legacy_media(self)

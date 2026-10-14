@@ -155,6 +155,24 @@ class ApiTest(unittest.TestCase):
         self.assertNotIn("pap1", [x["id"] for x in a.get("/api/data")[1]["ordenes"]])
         a.delete("/api/usuarios/tec-pap")
 
+    # ---- portal de seguimiento (lo abre el cliente, sin usuario ni contraseña)
+    def test_portal_de_seguimiento(self):
+        a = self.env.client(); a.login()
+        a.post("/api/orden", {"id": "seg1", "cliente": "Seguim Cliente", "tel": "11", "equipo": "Notebook", "estado": "En reparación", "clave": "clave-interna-777"})
+        d = a.get("/api/data")[1]
+        o = [x for x in d["ordenes"] if x["id"] == "seg1"][0]
+        self.assertTrue(o["seg"]); self.assertNotIn("seg_clave", d["config"])     # la clave secreta no sale del servidor
+        sin_sesion = self.env.client()                                            # sin cookies: cualquiera con el link entra
+        code, pag, h = sin_sesion.get(f"/seguimiento/{o['seq']}/{o['seg']}")
+        self.assertEqual(code, 200); self.assertEqual(h["Content-Type"], "text/html; charset=utf-8")
+        pag = pag.decode()
+        self.assertIn("Seguim Cliente", pag); self.assertIn("En reparación", pag)
+        self.assertNotIn("clave-interna-777", pag)                                # las notas internas no se muestran
+        self.assertEqual(sin_sesion.get(f"/seguimiento/{o['seq']}/000000000000")[0], 404)   # token cambiado
+        self.assertEqual(sin_sesion.get("/seguimiento/999/000000000000")[0], 404)           # orden que no existe
+        self.assertEqual(sin_sesion.get(f"/seguimiento/{o['seq']}/{o['seg']}/x")[0], 404)
+        a.delete("/api/orden/seg1")
+
     # ---- usuarios y roles
     def test_roles_y_gestion_de_usuarios(self):
         a = self.env.client(); a.login()

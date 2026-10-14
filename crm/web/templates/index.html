@@ -54,7 +54,7 @@
   <!-- ============ ÓRDENES ============ -->
   <div class="dh" style="margin-top:22px">
     <h2 class="sec">🧾 Órdenes <span class="mut" id="ordCount"></span></h2>
-    <div class="acts"><button class="pri" id="bNew2">+ Nueva orden</button></div>
+    <div class="acts"><button type="button" id="bSinRet" title="Equipos listos esperando que el cliente los retire">📦 Sin retirar</button><button class="pri" id="bNew2">+ Nueva orden</button></div>
   </div>
   <div id="chips" class="chips"></div>
   <div class="bar">
@@ -177,6 +177,7 @@
       <div><label>Días de garantía</label><input id="cGar" type="number" min="0"></div>
       <div><label>Alerta: equipos sin retirar (días)</label><input id="cAle" type="number" min="1"></div>
     </div>
+    <label>Dirección pública del CRM (para los links de seguimiento; vacío = la de este navegador)</label><input id="cUrlPub" placeholder="https://crm.midominio.com">
   </fieldset>
   <fieldset><legend>Listas</legend>
     <label>Checklist de ingreso (separado por comas)</label><input id="cChk">
@@ -203,6 +204,7 @@
     <div class="acts"><button type="button" id="bInvAdd">+ Repuesto al inventario</button><span id="cInvAlerta" class="mut"></span></div>
   </fieldset>
   <fieldset><legend>Mensajes de WhatsApp</legend>
+    <label>Todos pueden usar {cliente} {numero} {equipo} {estado} {taller} {seguimiento} (el link privado donde el cliente ve cómo va la orden)</label>
     <label>General — {cliente} {numero} {equipo} {estado} {taller}</label><textarea id="cMsg" style="min-height:70px"></textarea>
     <label>Presupuesto — además {diagnostico} {presupuesto}</label><textarea id="cMsgP" style="min-height:100px"></textarea>
     <label>Listo para retirar — además {saldo} {garantia}</label><textarea id="cMsgL" style="min-height:70px"></textarea>
@@ -234,6 +236,14 @@
   <div class="acts" style="justify-content:flex-end;margin-top:14px">
     <button id="cCan">Cancelar</button><button class="pri" id="cSave">Guardar</button>
   </div>
+</dialog>
+
+<!-- ============ EQUIPOS SIN RETIRAR ============ -->
+<dialog id="dSinRet">
+  <h3 style="margin:0">📦 Equipos sin retirar</h3>
+  <div class="mut" id="srSub" style="margin:6px 0 10px"></div>
+  <div id="srList"></div>
+  <div class="acts" style="justify-content:flex-end;margin-top:14px"><button id="srCan">Cerrar</button></div>
 </dialog>
 
 <datalist id="dlCli"></datalist>

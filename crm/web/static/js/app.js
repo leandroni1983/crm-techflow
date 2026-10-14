@@ -108,7 +108,7 @@ function vars(o) {
   const c = cfg();
   return { cliente: o.cliente, numero: numOrden(o), equipo: nombreEq(o), estado: o.estado, taller: c.taller, diagnostico: o.diagnostico,
     presupuesto: o.monto, saldo: money(saldo(o)), garantia: garTxt(o) || ' ', fecha: fechaOrd(o), serie: o.serie,
-    accesorios: o.accesorios, fisico: o.fisico, falla: o.problema, condiciones: c.condiciones };
+    accesorios: o.accesorios, fisico: o.fisico, falla: o.problema, condiciones: c.condiciones, seguimiento: segLink(o) || ' ' };
 }
 const wa = (o, txt) => 'https://wa.me/' + normTel(o.tel) + '?text=' + encodeURIComponent(txt);
 const tipoMsg = o => o.estado === 'Presupuesto' ? 'presupuesto' : o.estado === 'Listo para retirar' ? 'listo' : 'mensaje';
@@ -296,12 +296,14 @@ function card(o) {
       <a class="wa wa2" data-log="texto" data-id="${o.id}" href="${waComp(o)}" target="_blank" rel="noopener">Comprobante (texto)</a>
       <button data-a="print" data-id="${o.id}">🖨️ Imprimir</button>
       <button data-a="label" data-id="${o.id}">🏷️ Etiqueta</button>
+      ${o.seg ? `<button data-a="seg" data-id="${o.id}" title="Link privado para que el cliente vea cómo va su orden">🔗 Seguimiento</button>` : ''}
       <button data-a="edit" data-id="${o.id}">Editar</button>
       <button class="dg" data-a="del" data-id="${o.id}" title="Manda la orden a la papelera (se puede recuperar desde Configuración)">🗑️ Borrar</button>
     </div></div></div>`;
 }
 function render() {
   drawChips();
+  const sv = listosViejos().length; $('bSinRet').textContent = '📦 Sin retirar' + (sv ? ` (${sv})` : '');
   const q = $('q').value.toLowerCase(), f = $('fs').value, tf = $('fT').value, qf = quick ? QUICK[quick][1] : () => true;
   const L = DB.ordenes.filter(o => (!f || o.estado === f) && (!tf || o.tecnico === (tf === '@yo' ? yo() : tf)) && qf(o) &&
     (numOrden(o) + o.cliente + nombreEq(o) + (o.equipo_tipo || '') + o.tel + o.serie).toLowerCase().includes(q));
@@ -341,6 +343,7 @@ $('list').onclick = async e => {
     if (a === 'print') return imprimir(o);
     if (a === 'label') return etiquetar(o);
     if (a === 'edit') return openOrd(o);
+    if (a === 'seg') return copiarLink(o);
     if (a === 'del') return aPapelera(o);
     return;
   }
@@ -353,6 +356,47 @@ function drawTec() {
   $('fT').innerHTML = '<option value="">Todos los técnicos</option><option value="@yo">Mis órdenes</option>' + DB.tecnicos.map(n => `<option>${esc(n)}</option>`).join('');
   $('fT').value = v; $('fT').style.display = DB.tecnicos.length > 1 ? '' : 'none';
 }
+
+/* ============ LINK DE SEGUIMIENTO DEL CLIENTE ============
+   Cada orden tiene un link privado (firmado por el servidor) que el cliente puede abrir sin usuario ni
+   contraseña para ver cómo va. Sirve para escribir menos por WhatsApp: se manda una vez y el cliente consulta
+   solo. Si cargaste una dirección pública en ⚙️, los links la usan; si no, se arma con la dirección actual. */
+const basePublica = () => String(cfg().url_publica || location.origin).replace(/\/+$/, '');
+const segLink = o => (o && o.seg ? `${basePublica()}/seguimiento/${o.seq}/${o.seg}` : '');
+async function copiarLink(o) {
+  const u = segLink(o);
+  if (!u) return alert('El link se genera al guardar la orden en la base de datos: probá de nuevo en unos segundos.');
+  try { await navigator.clipboard.writeText(u); alert('Link de seguimiento copiado.\n\nPegalo en WhatsApp: el cliente ve el estado de su orden sin que le escribas.\n\n' + u); }
+  catch (e) { prompt('Link de seguimiento (copialo y mandáselo al cliente):', u); }
+}
+
+/* ============ EQUIPOS SIN RETIRAR ============
+   Los que están listos y el cliente todavía no vino a buscar: de un vistazo, con el aviso a mano. */
+const listos = () => DB.ordenes.filter(o => o.estado === 'Listo para retirar')
+  .sort((a, b) => diasDesde(b.estado_fecha || b.creada) - diasDesde(a.estado_fecha || a.creada));
+const listosViejos = () => listos().filter(o => diasDesde(o.estado_fecha || o.creada) > alertaDias());
+function drawSinRet() {
+  const L = listos(), v = listosViejos();
+  $('srSub').textContent = L.length ? `${L.length} equipo${L.length > 1 ? 's' : ''} esperando retiro`
+    + (v.length ? ` · ${v.length} hace más de ${alertaDias()} días` : ' · ninguno atrasado') : '';
+  $('srList').innerHTML = L.length ? L.map(o => {
+    const d = diasDesde(o.estado_fecha || o.creada), u = segLink(o);
+    return `<div class="sinret"><div>
+      <div><span class="num">${esc(numOrden(o))}</span> · ${esc(o.cliente)}</div>
+      <div class="mut">${esc(nombreEq(o))} · listo hace ${d} día${d === 1 ? '' : 's'}${d > alertaDias() ? ' ⚠️ avisale' : ''}</div></div>
+      <div class="acts">${o.tel ? `<a class="wa" href="${esc(waLink(o))}" target="_blank" rel="noopener" data-aviso="${esc(o.id)}">📲 Avisar</a>` : '<span class="mut">sin teléfono</span>'}
+      ${u ? `<button type="button" data-seg="${esc(o.id)}" title="Copiar el link de seguimiento">🔗 Link</button>` : ''}
+      <button type="button" data-ver="${esc(o.id)}">Ver orden</button></div></div>`;
+  }).join('') : '<div class="mut">No hay equipos esperando retiro. 👌</div>';
+}
+$('bSinRet').onclick = () => { drawSinRet(); $('dSinRet').showModal(); };
+$('srCan').onclick = () => $('dSinRet').close();
+$('srList').onclick = async e => {
+  const s = e.target.closest('[data-seg]'), v = e.target.closest('[data-ver]'), a = e.target.closest('[data-aviso]');
+  if (s) return copiarLink(find(s.dataset.seg));
+  if (v) { $('dSinRet').close(); return openOrd(find(v.dataset.ver)); }
+  if (a) { await log(find(a.dataset.aviso), LOGT.listo); render(); drawSinRet(); }   // queda anotado que se avisó
+};
 
 /* ============ DIÁLOGO DE ORDEN ============ */
 const CAMPOS = { cliente: 'fCli', tel: 'fTel', direccion: 'fDir', equipo: 'fEq', equipo_tipo: 'fEt', marca: 'fMa', color: 'fCo', serie: 'fSe', accesorios: 'fAc',
@@ -475,7 +519,7 @@ $('bSave').onclick = async () => {
 const CFG = { taller: 'cNom', taller_datos: 'cDat', prefijo: 'cPre', pais: 'cPais', pdfAncho: 'cAncho', pdfAlto: 'cAlto', et_ancho: 'cEtA',
   et_alto: 'cEtH', garantia_dias: 'cGar', dias_alerta: 'cAle', checklist_items: 'cChk', plantillas: 'cPla', msg: 'cMsg', msgP: 'cMsgP',
   msgListo: 'cMsgL', msgPDF: 'cMsgPDF', msgC: 'cMsgC', condiciones: 'cCond', msgEntrega: 'cMsgE', condiciones_entrega: 'cCondE', fallas: 'cFallas',
-  equipos: 'cEquipos' };
+  equipos: 'cEquipos', url_publica: 'cUrlPub' };
 const ADMIN_CFG = ['fallas', 'equipos', 'repuestos'];   // claves de configuración que solo puede cambiar el administrador
 const esAdmin = () => DB.api && DB.usuario?.rol === 'admin';
 function prevLogo() { const i = $('cLogoPrev'); i.style.display = tmpLogo ? 'block' : 'none'; i.src = tmpLogo || ''; }

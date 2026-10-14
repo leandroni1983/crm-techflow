@@ -2,16 +2,16 @@
    Todo el acceso a datos pasa por el objeto DB. Con server.py guarda en crm.db (SQLite);
    sin servidor usa el navegador (localStorage). Para otra base de datos, reemplazá estos métodos. */
 const DEFAULTS = {
-  taller: 'Mi Taller', taller_datos: '', logo: '', logo_solo: '0', prefijo: '', pais: '549',
+  taller: 'Mi Taller', taller_datos: '', logo: '', logo_solo: '0', prefijo: '', pais: '549', url_publica: '',
   pdfAncho: '210', pdfAlto: '148', et_ancho: '70', et_alto: '40', garantia_dias: '90', dias_alerta: '7',
   checklist_items: 'Enciende, Con batería, Con cargador, Pantalla rota, Golpes visibles, Con disco / memoria',
   fallas: 'No enciende\nNo da imagen / no arranca\nNo carga / batería\nLíquido / mojado\nPantalla rota\nTeclado / botones\nLento / virus / sistema\nNo conecta (WiFi/red)\nLimpieza / mantenimiento\nOtro',
   equipos: 'Celular\nNotebook\nPC de escritorio\nTablet\nImpresora\nMonitor\nTV\nConsola\nElectrodoméstico\nOtro',
   repuestos: '[]',
   plantillas: 'Limpieza y pasta térmica|Limpieza interna y cambio de pasta térmica|15000\nFormateo e instalación|Formateo e instalación del sistema operativo y programas|20000',
-  msg: 'Hola {cliente}! Te escribimos de {taller}. Tu orden de servicio es la N° {numero} ({equipo}). Estado actual: {estado}.',
+  msg: 'Hola {cliente}! Te escribimos de {taller}. Tu orden de servicio es la N° {numero} ({equipo}). Estado actual: {estado}.\n\nPodés ver cómo va cuando quieras en este link: {seguimiento}',
   msgP: 'Hola {cliente}! Te escribimos de {taller} por tu orden N° {numero} ({equipo}).\n\nDiagnóstico: {diagnostico}\n\nPresupuesto: ${presupuesto}\n\nSi estás de acuerdo, respondé este mensaje para avanzar con la reparación.',
-  msgListo: 'Hola {cliente}! Tu equipo ({equipo}) ya está listo para retirar en {taller}. Orden N° {numero}. Saldo a abonar: {saldo}. {garantia}',
+  msgListo: 'Hola {cliente}! Tu equipo ({equipo}) ya está listo para retirar en {taller}. Orden N° {numero}. Saldo a abonar: {saldo}. {garantia}\n\nDetalle: {seguimiento}',
   msgPDF: 'Hola {cliente}! Te enviamos el comprobante de ingreso de tu equipo ({equipo}). Orden N° {numero}. Gracias por confiar en {taller}.',
   msgC: 'Hola {cliente}! Recibimos tu equipo en {taller}.\n\n📋 Orden N°: {numero}\n📅 Fecha: {fecha}\n💻 Equipo: {equipo}\n🔢 N° de serie: {serie}\n🎒 Accesorios: {accesorios}\n🔍 Estado físico: {fisico}\n⚠️ Falla informada: {falla}\n\n{condiciones}\n\nGuardá este mensaje: con tu número de orden podés consultarnos el estado del equipo.',
   msgEntrega: 'Hola {cliente}! Te enviamos el comprobante de entrega de tu equipo ({equipo}). Orden N° {numero}. Saldo: {saldo}. {garantia} Gracias por confiar en {taller}.',

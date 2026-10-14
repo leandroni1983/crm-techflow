@@ -202,6 +202,28 @@ const ok = (c, m) => { if (!c) fallas++; console.log((c ? 'OK   ' : 'FALLA') + '
   ok((await page.inputValue('#fRep input[data-k="desc"]')) === 'Batería' && (await page.inputValue('#fRep input[data-k="costo"]')) === '6000'
     && (await page.inputValue('#fRep input[data-k="cant"]')) === '1', 'elegir del inventario completa el repuesto, la cantidad y el costo');
   await page.click('#bCan'); await page.waitForTimeout(200);
+  // --- portal de seguimiento para el cliente y equipos sin retirar
+  const dSeg = await (await page.request.get(BASE + '/api/data')).json();
+  const oL = dSeg.ordenes.find(x => x.cliente === 'Leandro');
+  ok(!!oL.seg && !('seg_clave' in dSeg.config), 'cada orden tiene su link firmado y la clave secreta no llega al navegador');
+  const ctx2 = await br.newContext(); const p2 = await ctx2.newPage();
+  const pag = await (await p2.goto(BASE + '/seguimiento/' + oL.seq + '/' + oL.seg)).text();
+  ok(pag.includes('Leandro') && pag.includes('En qué anda') && !pag.includes('clave123'), 'el cliente ve cómo va su orden sin ingresar (y no ve la clave del equipo)');
+  ok((await p2.goto(BASE + '/seguimiento/' + oL.seq + '/000000000000')).status() === 404, 'con el token cambiado el portal no muestra nada');
+  await ctx2.close();
+  ok((await page.locator('[data-a="seg"]').count()) >= 1, 'la orden ofrece el botón para copiar el link de seguimiento');
+  const cardL = page.locator('.ord').filter({ hasText: 'Leandro' });
+  if (await cardL.locator('.ord-body').isHidden()) await cardL.locator('.ord-line').click();
+  await cardL.locator('[data-a="edit"]').click();
+  await page.selectOption('#fSt', 'Listo para retirar'); await page.click('#bSave'); await page.waitForTimeout(400);
+  await page.click('#bSinRet');
+  ok((await page.textContent('#srList')).includes('Leandro') && (await page.locator('#srList [data-aviso]').count()) === 1, '“Sin retirar” lista el equipo esperando y ofrece avisar por WhatsApp');
+  ok((await page.locator('#srList [data-seg]').count()) === 1, 'y desde ahí también se copia el link de seguimiento');
+  await page.click('#srCan');
+  if (await cardL.locator('.ord-body').isHidden()) await cardL.locator('.ord-line').click();
+  await cardL.locator('[data-a="edit"]').click();
+  await page.selectOption('#fSt', 'Entregado'); await page.click('#bSave'); await page.waitForTimeout(400);
+  // --- PWA
   const man = await (await page.request.get(BASE + '/manifest.webmanifest')).json();
   const sizes = man.icons.map(i => i.sizes);
   ok(man.display === 'standalone' && !!man.name && man.start_url === '/' && man.scope === '/' && sizes.includes('192x192') && sizes.includes('512x512')

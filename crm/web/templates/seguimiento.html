@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Seguimiento de tu orden · {{taller}}</title>
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#2563eb">
+<link rel="stylesheet" href="/static/css/styles.css">
+<link rel="icon" href="/static/img/favicon.png">
+</head>
+<body>
+<div class="wrap" style="max-width:560px;margin-top:5vh">
+  <div class="card">
+    <div class="mut" style="font-size:13px">{{taller}}</div>
+    <h1 style="margin:2px 0 12px">Tu orden {{numero}}</h1>
+    <div class="kv"><span>Cliente</span><span>{{cliente}}</span></div>
+    <div class="kv"><span>Equipo</span><span>{{equipo}}</span></div>
+    <div class="kv"><span>Estado</span><span class="tag {{clase}}">{{estado}}</span></div>
+    <div class="kv"><span>Ingresó</span><span>{{ingreso}}</span></div>{{entrega}}{{saldo}}
+    <h2 style="font-size:15px;margin:18px 0 4px">En qué anda</h2>
+    <div class="pasos">{{pasos}}</div>{{historial}}
+    <div class="mut" style="font-size:13px;margin-top:16px;white-space:pre-line">{{datos}}</div>
+  </div>
+  <div class="mut" style="font-size:12px;text-align:center;padding:0 12px">
+    Este link es privado: solo muestra esta orden. Si tenés alguna duda, escribinos.
+  </div>
+</div>
+</body>
+</html>

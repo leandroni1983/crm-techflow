@@ -4,7 +4,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 
-from .. import __version__
+from .. import __version__, seg
 from ..backup import dump as backup_dump
 from ..db import DBUnavailable
 from ..log import log
@@ -17,7 +17,7 @@ from ..service import NeedsDB, NoSeq
 WEB = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 STATIC = os.path.realpath(os.path.join(WEB, "static"))
 PROTECTED_STATIC = {"js/app.js", "js/db.js"}  # el resto de /static es público (lo necesita la pantalla de login)
-ADMIN_CONFIG_KEYS = {"fallas", "equipos", "repuestos"}  # claves de configuración que solo puede cambiar el administrador
+ADMIN_CONFIG_KEYS = {"fallas", "equipos", "repuestos", "seg_clave"}  # claves de configuración que solo puede cambiar el administrador
 TYPES = {".css": "text/css; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".png": "image/png",
          ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml"}
 NAME_RE = re.compile(r"^[a-z0-9_.-]{3,30}$")
@@ -159,11 +159,24 @@ def make_handler(app):
                 data = media.read(p)
                 if data is None: return self._send(404, {"error": "not found"})
                 return self._send(200, data, "image/jpeg", {"Cache-Control": "private, max-age=31536000, immutable"})
+            if p.startswith("/seguimiento/"):
+                # Portal del cliente: sin login, pero con un link firmado que solo sirve para su propia orden.
+                if not rate.allow(self._ip()): return self._send(429, {"error": "Demasiadas solicitudes seguidas. Probá en un rato."})
+                partes = [x for x in p[len("/seguimiento/"):].split("/") if x]
+                clave, o = svc.config().get("seg_clave", ""), None
+                if len(partes) == 2 and partes[0].isdigit() and clave:
+                    o = next((x for x in svc.orders() if x["seq"] == int(partes[0])), None)
+                    if o and not seg.valido(clave, o["seq"], o["id"], partes[1]): o = None
+                if not o: return self._send(404, seg.invalido().encode(), "text/html; charset=utf-8")
+                return self._send(200, seg.pagina(svc.config(), o).encode(), "text/html; charset=utf-8")
             if not p.startswith("/api/"): return self._send(404, {"error": "not found"})
             if not user: return self._send(401, {"error": "login"})
             if p == "/api/data":
                 cfg = svc.config(); cfg.pop("pin", None)
-                return self._send(200, {"ordenes": svc.orders(), "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
+                clave = cfg.pop("seg_clave", "")          # la clave secreta nunca sale del servidor
+                ordenes = svc.orders()
+                if clave: ordenes = [{**o, "seg": seg.token(clave, o["seq"], o["id"])} for o in ordenes]
+                return self._send(200, {"ordenes": ordenes, "config": cfg, "usuario": user, "tecnicos": svc.usernames(), "sync": svc.status()})
             if p == "/api/estado": return self._send(200, svc.status())
             if p == "/api/respaldo":
                 # Respaldo completo de la base en un archivo JSON (solo el administrador).
