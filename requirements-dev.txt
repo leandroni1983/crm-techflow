@@ -1,0 +1,6 @@
+# Solo para desarrollo. Las pruebas unitarias usan unittest (viene con Python), no hace falta nada más.
+-r requirements.txt
+# Opcional: permite probar la lectura de los códigos QR
+opencv-python-headless
+numpy
+# Pruebas de navegador (se instala con npm, no con pip):  npm install -g playwright && npx playwright install chromium

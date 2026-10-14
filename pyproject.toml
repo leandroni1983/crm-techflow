@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crm-tecnico"
+description = "CRM para técnico informático: órdenes de servicio, comprobantes PDF/QR, WhatsApp y modo sin conexión"
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+dependencies = ["psycopg[binary]>=3.2,<3.4"]
+
+[tool.setuptools.dynamic]
+version = { attr = "crm.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["crm*"]
+
+[tool.setuptools.package-data]
+crm = ["web/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

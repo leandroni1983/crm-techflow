@@ -1,1 +1,2 @@
+# Dependencias de ejecución (única dependencia externa: el driver de PostgreSQL)
 psycopg[binary]>=3.2,<3.4

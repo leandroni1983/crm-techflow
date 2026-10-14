@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ingresar · CRM Técnico</title>
+<link rel="stylesheet" href="/static/css/styles.css">
+<link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials">
+<meta name="theme-color" content="#2563eb">
+<link rel="icon" href="/static/img/favicon.png">
+<link rel="apple-touch-icon" href="/static/img/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CRM Técnico">
+</head>
+<body>
+<div class="wrap" style="max-width:380px;margin-top:12vh">
+  <div class="card">
+    <h1 style="margin-bottom:4px">🛠️ CRM Técnico</h1>
+    <div class="mut">Ingresá con tu usuario</div>
+    <form id="f">
+      <label>Usuario</label><input id="u" autocomplete="username" autocapitalize="none" autofocus required>
+      <label>Contraseña</label><input id="p" type="password" autocomplete="current-password" required>
+      <div id="err" style="color:var(--dg);font-size:13px;min-height:18px;margin-top:8px"></div>
+      <button class="pri" style="width:100%;margin-top:6px" id="go">Ingresar</button>
+    </form>
+  </div>
+</div>
+<script src="/static/js/login.js"></script>
+</body>
+</html>

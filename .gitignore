@@ -1,40 +1,25 @@
+# Datos y secretos: NUNCA al repositorio
+.env
+data/
+*.db
+*.db-journal
+outbox.db
+reserva.json
+comprobantes/
+media/
+
 # Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
 
-# Environment variables
-.env
-.env.example
-.env.production
-
-# Data files
-crm.db
-*.db
-*.sqlite3
-
-# Docker
-.dockerignore
-
-# Media and Comprobantes (generated files)
-media/
-comprobantes/
-
-# Docker images
-*.tar
-*.tgz
-
-# IDEs
-.vscode/
+# Herramientas
+node_modules/
+.pytest_cache/
 .idea/
-*.code-workspace
-
-# OS
+.vscode/
 .DS_Store
-.LockFile
-
-# Backup
-*.bak
-*.backup
