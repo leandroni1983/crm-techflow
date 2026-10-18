@@ -1,0 +1,54 @@
+services:
+  crm:
+    # La imagen se toma de Docker Hub (versión fija, nunca "latest"). `build` solo se usa en la PC donde armás la imagen.
+    image: leandrocode/crmtech:${CRM_VERSION:-1.4.0}
+    build:
+      context: .
+      args:
+        VERSION: ${CRM_VERSION:-1.4.0}
+    container_name: crm-tecnico
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?Falta DATABASE_URL en el .env}
+      REQUIRE_POSTGRES: ${REQUIRE_POSTGRES:-1}   # si DATABASE_URL no es PostgreSQL, el CRM no arranca (evita caer en SQLite sin darte cuenta)
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+      # Solo se usan la PRIMERA vez (cuando todavía no hay usuarios). Después se gestionan desde ⚙️.
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Usuario/grupo del host dueño de DATA_PATH (ejecutá `id` en tu server)
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+    # Permite usar host.docker.internal en DATABASE_URL si tu PostgreSQL corre en el propio server (fuera de Docker)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Fotos, firmas y comprobantes. Obligatorio y FUERA de la carpeta del proyecto.
+      - ${DATA_PATH:?Falta DATA_PATH en el .env (carpeta del host para fotos y comprobantes)}:/data
+
+  # Base de datos local: arranca junto con el CRM con un simple `docker compose up -d`.
+  # Si en cambio usás una base en la nube, levantá solo el CRM: `docker compose up -d crm`
+  db:
+    image: postgres:16
+    container_name: crm-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-crm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_DB: ${POSTGRES_DB:-crm}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - crm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    # sin "ports": PostgreSQL NO se publica; solo el contenedor del CRM lo alcanza por la red interna
+
+volumes:
+  crm_pgdata:
+    external: true   # se crea UNA vez a mano: docker volume create crm_pgdata

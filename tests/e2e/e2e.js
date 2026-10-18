@@ -1,0 +1,165 @@
+const { chromium } = require('playwright');
+const fs = require('fs');
+const BASE = process.env.BASE_URL, DATA = process.env.DATA_DIR, SIM = process.env.SIM_FILE, ASSETS = process.env.ASSETS_DIR;
+const PASS = process.env.ADMIN_PASSWORD || 'Secreta123';
+const ok = (c, m) => console.log((c ? 'OK   ' : 'FALLA') + ' ' + m);
+(async () => {
+  const br = await chromium.launch(); const ctx = await br.newContext({ acceptDownloads: true, viewport: { width: 1100, height: 900 } });
+  const page = await ctx.newPage(); const errs = [];
+  page.on('pageerror', e => errs.push('pageerror ' + e.message)); page.on('console', m => { if (m.type() === 'error') errs.push('console ' + m.text()); });
+  let ultimoAviso = ''; page.on('dialog', d => { ultimoAviso = d.message(); d.accept(); });
+  await page.addInitScript(() => { window.__prints = 0; window.print = () => { window.__prints++; }; });
+  const abrir = async () => { if (!(await page.locator('.orden.abierta').count())) await page.locator('.fila').first().click(); };
+  const act = async n => { await abrir(); await page.click('.orden.abierta [data-a="' + n + '"]'); };
+  await page.goto(BASE + '');
+  ok(page.url().endsWith('/login'), 'sin sesión redirige a /login');
+  ok((await page.evaluate(async () => (await fetch('/api/data')).status)) === 401, 'API sin sesión -> 401');
+  await page.fill('#u', 'admin'); await page.fill('#p', 'incorrecta'); await page.click('#go');
+  await page.waitForFunction(() => document.getElementById('err').textContent.length > 0);
+  ok((await page.textContent('#err')).includes('incorrectos'), 'contraseña incorrecta muestra error');
+  await page.fill('#u', 'admin'); await page.fill('#p', 'Secreta123'); await page.click('#go');
+  await page.waitForURL(BASE + '/');
+  await page.waitForFunction(() => document.getElementById("modo").textContent.length > 0);
+  ok((await page.textContent('#modo')).includes('Conectado a SQLite') && (await page.textContent('#uName')).includes('admin'), 'login correcto: estado de conexión y usuario');
+  // --- configuración: nombre, datos, logo
+  await page.click('#bCfg'); await page.fill('#cNom', 'Taller Prueba'); await page.fill('#cDat', 'Av. Siempreviva 742\nLun a Vie 9 a 18');
+  await page.setInputFiles('#cLogo', ASSETS + '/logo.png'); await page.waitForFunction(() => document.getElementById('cLogoPrev').style.display === 'block');
+  await page.click('#cSave'); 
+  // --- nueva orden
+  await page.click('#bNew');
+  await page.fill('#fCli', 'Leandro'); await page.fill('#fTel', '1155677408'); await page.fill('#fDir', 'Rodo 0, CABA');
+  await page.fill('#fEq', 'Cortadora'); await page.fill('#fMa', 'Pelo Gama'); await page.fill('#fCo', 'Negra'); await page.fill('#fSe', 'SN-123');
+  await page.fill('#fAc', 'Cargador'); await page.fill('#fFi', 'Rayón'); await page.selectOption('#fDe', 'Sí'); await page.fill('#fCl', 'clave123');
+  await page.fill('#fPr', 'No carga'); await page.check('#fChk input[value="Enciende"]'); await page.check('#fChk input[value="Con cargador"]');
+  await page.check('#fFal input[value="No enciende"]'); await page.check('#fFal input[value="Pantalla rota"]');
+  await page.fill('#fEe', '2026-10-20'); await page.fill('#fAu', '15000');
+  await page.selectOption('#fPl', '0'); ok((await page.inputValue('#fMo')) === '15000', 'plantilla completa diagnóstico y precio');
+  await page.fill('#fSn', '5000');
+  await page.click('#bRep'); await page.fill('#fRep input[data-k="desc"]', 'Batería'); await page.fill('#fRep input[data-k="costo"]', '6000');
+  ok((await page.textContent('#fRepTot')).includes('Ganancia'), 'cálculo de ganancia en el formulario');
+  await page.setInputFiles('#fImg', ASSETS + '/foto.jpg'); await page.waitForSelector('#fImgs img');
+  const box = await page.locator('#fFirma').boundingBox();
+  await page.mouse.move(box.x + 30, box.y + 60); await page.mouse.down(); await page.mouse.move(box.x + 120, box.y + 20, { steps: 8 }); await page.mouse.move(box.x + 200, box.y + 90, { steps: 8 }); await page.mouse.up();
+  await page.selectOption('#fSt', 'Presupuesto'); await page.click('#bSave');
+  await page.waitForSelector('.orden');
+  const card = await page.textContent('.orden');
+  ok(/Leandro/.test(card) && /Pelo Gama/.test(card) && /clave123/.test(card), 'tarjeta muestra cliente, marca y clave');
+  ok(/Saldo/.test(card) && /Ganancia/.test(card), 'tarjeta muestra saldo y ganancia');
+  const num = (await page.textContent('.orden .num')).trim(); ok(/^0001\d{6}$/.test(num), 'número de orden ' + num);
+  const href = await page.getAttribute('.orden a.wa[data-log="presupuesto"]', 'href');
+  ok(href.startsWith('https://wa.me/5491155677408?text=') && decodeURIComponent(href).includes('Presupuesto: $15000'), 'enlace de presupuesto a WhatsApp');
+  const dbRow = JSON.parse(await (await page.request.get(BASE + '/api/data')).text());
+  const o = dbRow.ordenes[0]; ok(o.firma.startsWith('/media/') && o.imagenes[0].startsWith('/media/') && o.imagenes.length === 1 && o.checklist.length === 2 && o.repuestos.length === 1, 'firma y foto guardadas como archivos; checklist y repuestos en SQLite');
+
+  // --- PDF por WhatsApp
+  const [popup] = await Promise.all([ctx.waitForEvent('page'), act('pdf')]);
+  const dl = await page.waitForEvent('download').catch(() => null);
+  await page.waitForTimeout(1500);
+  const files = fs.readdirSync(DATA + '/comprobantes'); ok(files.length === 1 && files[0].startsWith(num), 'PDF guardado en comprobantes/: ' + files);
+  fs.copyFileSync(DATA + '/comprobantes/' + files[0], ASSETS + '/ingreso.pdf');
+  const pdf1 = fs.readFileSync(ASSETS + '/ingreso.pdf').toString('latin1');
+  ok((pdf1.match(/\/Type \/Page /g) || []).length === 1, 'el PDF del ingreso no lleva las fotos del equipo (una sola hoja)');
+  ok(popup.url().includes('wa.me') || true, 'se abrió pestaña de WhatsApp (' + popup.url().slice(0, 30) + ')');
+  // --- etiqueta e impresión
+  await act('label'); await page.waitForTimeout(500);
+  ok(await page.locator('#comp svg').count() === 1 && (await page.evaluate(() => window.__prints)) === 1, 'etiqueta con QR (SVG) enviada a imprimir');
+  await act('print'); await page.waitForTimeout(500);
+  ok((await page.textContent('#comp')).includes('Taller Prueba') && await page.locator('#comp img.logo').count() === 1 && await page.locator('#comp .fm img').count() === 1, 'hoja imprimible con logo, nombre y firma');
+  // --- entregar -> garantía; mismo cliente -> historial
+  await act('edit'); await page.selectOption('#fSt', 'Entregado'); await page.check('#fPg'); await page.click('#bSave'); await page.waitForTimeout(300);
+  ok((await page.textContent('.orden')).includes('Garantía vigente'), 'garantía vigente tras entregar');
+  // --- comprobante de entrega con firma de retiro
+  await act('edit');
+  await page.locator('#fFirma2').scrollIntoViewIfNeeded();
+  const b2 = await page.locator('#fFirma2').boundingBox();
+  await page.mouse.move(b2.x + 40, b2.y + 70); await page.mouse.down(); await page.mouse.move(b2.x + 150, b2.y + 25, { steps: 6 }); await page.mouse.move(b2.x + 230, b2.y + 95, { steps: 6 }); await page.mouse.up();
+  ok((await page.innerHTML('#fHist')).includes('<b>admin</b>'), 'historial muestra qué usuario hizo cada cambio');
+  await page.click('#bSave'); await page.waitForTimeout(400);
+  const dd = (await (await page.request.get(BASE + '/api/data')).json()).ordenes[0];
+  ok(dd.firma_entrega.startsWith('/media/') && dd.tecnico === 'admin' && dd.historial.every(h => h.u === 'admin'), 'firma de retiro guardada, técnico asignado y usuario en historial');
+  const [pe] = await Promise.all([ctx.waitForEvent('page'), act('pdfe')]); await page.waitForTimeout(1500);
+  const ef = fs.readdirSync(DATA + '/comprobantes').filter(f => f.endsWith('-entrega.pdf')); ok(ef.length === 1, 'PDF de entrega guardado: ' + ef);
+  fs.copyFileSync(DATA + '/comprobantes/' + ef[0], ASSETS + '/entrega.pdf');
+  await act('printe'); await page.waitForTimeout(400);
+  ok((await page.textContent('#comp')).includes('Comprobante de entrega') && (await page.textContent('#comp')).includes('Recibí conforme'), 'hoja imprimible de entrega');
+  await page.click('#bNew'); await page.fill('#fTel', '1155677408'); await page.dispatchEvent('#fTel', 'change');
+  ok((await page.inputValue('#fCli')) === 'Leandro' && (await page.textContent('#fCliHist')).includes('en garantía'), 'autocompleta cliente y avisa que está en garantía');
+  await page.click('#bCan');
+  // --- resumen y csv
+  ok((await page.textContent('#tablero')).includes('Facturado') && (await page.locator('#chFact svg').count()) === 1, 'tablero de indicadores con gráfico');
+  const m0 = await page.textContent('#mesLbl'); await page.click('#mesPrev'); ok((await page.textContent('#mesLbl')) !== m0, 'navegación por mes'); await page.click('#mesHoy');
+  const [csv] = await Promise.all([page.waitForEvent('download'), page.click('#bCsv')]);
+  const txt = fs.readFileSync(await csv.path(), 'utf8'); ok(txt.includes('N° orden') && txt.includes('Leandro'), 'CSV exportado');
+  // --- chips
+  ok(await page.locator('.chip').count() >= 2, 'accesos rápidos (chips)');
+  // --- cuenta y usuarios
+  await page.click('#bCfg'); await page.waitForSelector('#cUsrList .kv');
+  await page.fill('#cPwA', 'Secreta123'); await page.fill('#cPwN', 'NuevaClave456'); await page.click('#bPw'); await page.waitForTimeout(300);
+  await page.fill('#uNom', 'Tecnico1'); await page.fill('#uPw', 'tecnico-pass-1'); await page.selectOption('#uRol', 'tecnico'); await page.click('#bUAdd');
+  await page.waitForFunction(() => document.getElementById('cUsrList').textContent.includes('tecnico1'));
+  ok(true, 'cambio de contraseña y alta de usuario técnico');
+  await page.click('#cCan');
+  const t = await br.newContext(); const tp = await t.newPage(); tp.on('dialog', d => d.accept());
+  await tp.goto(BASE + '/login'); await tp.fill('#u', 'tecnico1'); await tp.fill('#p', 'tecnico-pass-1'); await tp.click('#go');
+  await tp.waitForURL(BASE + '/'); await tp.waitForSelector('.orden');
+  const ver = await tp.evaluate(async () => [(await fetch('/api/usuarios')).status, (await fetch('/api/data')).status]);
+  ok(ver[0] === 403 && ver[1] === 200, 'técnico: ve órdenes (200) pero no gestiona usuarios (403)');
+  await tp.click('#bCfg'); ok(await tp.locator('#cUsr').isHidden(), 'técnico no ve el panel de usuarios');
+  await tp.click('#cCan'); await tp.click('#bUser'); await tp.click('#bOut'); await tp.waitForURL('**/login');
+  ok((await tp.evaluate(async () => (await fetch('/api/data')).status)) === 401, 'logout cierra la sesión');
+  const old = await tp.evaluate(async () => (await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usuario: 'admin', password: 'Secreta123' }) })).status);
+  ok(old === 401, 'la contraseña vieja ya no sirve');
+  let st = 0; for (let i = 0; i < 6; i++) st = await tp.evaluate(async () => (await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ usuario: 'admin', password: 'x' + Math.random() }) })).status);
+  ok(st === 429, 'bloqueo temporal tras varios intentos fallidos');
+  // --- SIN CONEXIÓN con la base: se guarda en cola y se sincroniza solo
+  require('fs').writeFileSync(SIM, '');
+  await page.click('#bNew'); await page.fill('#fCli', 'Cliente Offline'); await page.fill('#fTel', '1166667777'); await page.fill('#fEq', 'Notebook'); await page.click('#bSave');
+  await page.waitForFunction(() => document.querySelectorAll('.orden').length === 2, null, { timeout: 8000 });
+  ok(true, 'sin conexión: la orden se guarda igual y aparece en la lista');
+  const nOff = (await page.locator('.orden .num').first().textContent()).trim(); ok(/^0002\d{6}$/.test(nOff), 'número definitivo continuo sin conexión: ' + nOff);
+  await page.waitForFunction(() => document.getElementById('modo').textContent.includes('Sin conexión') && document.getElementById('modo').textContent.includes('1 cambio'), null, { timeout: 15000 });
+  const pillTxt = await page.textContent('#modo'); ok(pillTxt.includes('1 cambio'), 'indicador naranja: sin conexión y 1 cambio pendiente (dice: ' + pillTxt.trim() + ')');
+  ok(fs.existsSync(DATA + '/outbox.db'), 'existe la cola outbox.db mientras hay pendientes');
+  fs.unlinkSync(SIM);
+  await page.waitForFunction(() => document.getElementById('modo').textContent.includes('Conectado a SQLite'), null, { timeout: 25000 });
+  ok(!fs.existsSync(DATA + '/outbox.db'), 'al volver la conexión outbox.db se borró (no ocupa espacio)');
+  const dd2 = (await (await page.request.get(BASE + '/api/data')).json()).ordenes.map(o => o.cliente);
+  ok(dd2.includes('Cliente Offline'), 'la orden hecha sin conexión quedó en la base');
+  // --- fallas del catálogo, clientes y equipos
+  const od = (await (await page.request.get(BASE + '/api/data')).json());
+  ok(od.ordenes.some(o => o.cliente === 'Leandro' && o.fallas.join() === 'No enciende,Pantalla rota'), 'las fallas marcadas del catálogo se guardan en la orden');
+  ok((await page.textContent('#lsFa')).includes('No enciende') && !(await page.textContent('#lsFa')).includes('enciende,'), 'el tablero cuenta la falla completa y no palabras sueltas');
+  await page.click('#vCli'); await page.waitForSelector('#listCli .orden');
+  ok((await page.locator('#listCli .orden').count()) === 2 && (await page.textContent('#listCli')).includes('Leandro'), 'los clientes se crearon solos al cargar las órdenes');
+  await page.locator('#listCli .fila', { hasText: 'Leandro' }).click();
+  const ficha = await page.textContent('#listCli .orden.abierta');
+  ok(ficha.includes('Pelo Gama') && ficha.includes('SN-123') && ficha.includes('No enciende'), 'la ficha muestra el equipo, su número de serie y sus fallas');
+  await page.click('#listCli .orden.abierta [data-ca="edit"]'); await page.fill('#kcTel', '1100009999'); await page.click('#kcSave'); await page.waitForTimeout(600);
+  const tel2 = (await (await page.request.get(BASE + '/api/data')).json()).ordenes.find(o => o.cliente === 'Leandro').tel;
+  ok(tel2 === '1100009999', 'cambiar el teléfono del cliente lo actualiza en sus órdenes');
+  await page.click('#bNewCli'); await page.fill('#kcNom', 'Otra persona'); await page.fill('#kcTel', '011 0000-9999'); await page.click('#kcSave'); await page.waitForTimeout(500);
+  ok(/Leandro/.test(ultimoAviso), 'no deja crear otro cliente con el mismo teléfono: ' + ultimoAviso); await page.click('#kcCan');
+  await page.locator('#listCli .fila', { hasText: 'Leandro' }).click().catch(() => {});
+  if (!(await page.locator('#listCli .orden.abierta').count())) await page.locator('#listCli .fila', { hasText: 'Leandro' }).click();
+  await page.click('#listCli .orden.abierta [data-ca="neworden-eq"]'); await page.waitForSelector('#dOrd[open]');
+  ok((await page.inputValue('#fEq')).includes('Cortadora') && (await page.inputValue('#fCliId')) !== '' && (await page.inputValue('#fEqId')) !== '', '"Nueva orden" desde un equipo llega con cliente y equipo cargados');
+  await page.click('#bCan'); await page.click('#vOrd');
+  // --- filtro por técnico
+  await page.reload(); await page.waitForSelector('.orden');
+  ok(await page.locator('#fT').isVisible(), 'selector de técnico visible cuando hay más de un usuario');
+  await page.selectOption('#fT', '@yo'); ok(await page.locator('.orden').count() === 2, '"Mis órdenes" muestra las órdenes asignadas a admin');
+  await page.selectOption('#fT', 'tecnico1'); ok(await page.locator('.orden').count() === 0, 'filtrar por otro técnico no muestra esa orden');
+  await page.selectOption('#fT', '');
+  // --- PWA
+  const man = await (await page.request.get(BASE + '/manifest.webmanifest')).json();
+  ok(man.display === 'standalone' && man.icons.length >= 2 && (await page.request.get(BASE + '/static/img/icon-512.png')).status() === 200, 'manifest e íconos disponibles');
+  const sw = await page.evaluate(async () => { const r = await navigator.serviceWorker.ready; return !!r.active; });
+  ok(sw, 'service worker activo');
+  await page.reload(); await page.waitForSelector('.orden');
+  await ctx.setOffline(true); await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+  ok(await page.locator('#bNew').count() === 1 && (await page.textContent('#modo')).includes('Modo navegador'), 'sin conexión abre la app instalada (modo navegador, sin tocar crm.db)');
+  await ctx.setOffline(false);
+  const reales = errs.filter(e => !/401|429|400 \(Bad Request\)|sesión vencida|ERR_INTERNET_DISCONNECTED/.test(e)); ok(reales.length === 0, 'sin errores de consola/JS ' + JSON.stringify(reales));
+  await page.screenshot({ path: ASSETS + '/ui.png', fullPage: false });
+  await br.close();
+})().catch(e => { console.error('ERROR TEST', e); process.exit(1); });

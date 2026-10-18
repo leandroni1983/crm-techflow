@@ -1,0 +1,25 @@
+# Datos y secretos: NUNCA al repositorio
+.env
+data/
+*.db
+*.db-journal
+outbox.db
+reserva.json
+comprobantes/
+media/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Herramientas
+node_modules/
+.pytest_cache/
+.idea/
+.vscode/
+.DS_Store
