@@ -1,6 +1,6 @@
 # Cambios
 
-## 1.4.0
+## 1.5.0
 - **Clientes y equipos como registros propios.** Se crean solos al cargar una orden (el mismo teléfono es el mismo cliente, aunque se escriba distinto;
   el mismo número de serie, el mismo equipo) y se editan desde la nueva pantalla **Clientes**: ficha con datos de contacto, equipos y la línea de
   tiempo de reparaciones de cada equipo, con aviso cuando un equipo vuelve dentro de la garantía. Cambiar el teléfono o el nombre de un cliente
@@ -10,6 +10,10 @@
 - **El PDF del ingreso ya no incluye las fotos del equipo** (siguen guardadas en la orden). La firma sí se mantiene.
 - Clientes y equipos también funcionan sin conexión con la base (van a la misma cola de pendientes).
 - Corrección: el service worker no guardaba uno de los scripts y la app instalada no abría sin conexión.
+- **Nota de la 1.5.0**: esta versión sustituye a la 1.4.0 que estaba publicada en el repositorio, que incluía papelera con
+  respaldo descargable, portal de seguimiento para el cliente, pagos y caja, kardex, tareas, adjuntos, auditoría global,
+  inventario de repuestos y sondeo de cambios en tiempo real. Esas funciones no forman parte de esta versión; siguen
+  disponibles en el historial del repositorio.
 
 ## 1.3.0
 - Interfaz rediseñada: tablero de indicadores del mes (facturado, ganancia, ticket promedio, margen, activas, entregadas, ingresadas,
